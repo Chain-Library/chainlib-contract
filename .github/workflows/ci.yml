@@ -1,0 +1,31 @@
+name: Build and Test
+
+on: [push, pull_request]
+permissions: read-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: 2.8.4
+      - name: Check cairo format
+        run: scarb fmt --check
+      - name: Build cairo programs
+        run: scarb build
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: 2.9.2
+      - uses: foundry-rs/setup-snfoundry@v3
+        with:
+          starknet-foundry-version: 0.32.0
+      - name: Run cairo tests
+        working-directory: contract
+        run: snforge test
