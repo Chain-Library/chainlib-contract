@@ -1,4 +1,3 @@
-
 // Import the contract modules
 use chain_lib::chainlib::ChainLib;
 
@@ -29,7 +28,6 @@ fn setup() -> ContractAddress {
 fn test_initial_data() {
     let contract_address = setup();
 
-
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Ensure dispatcher methods exist
@@ -43,17 +41,14 @@ fn test_initial_data() {
 fn test_create_token_bount_account() {
     let contract_address = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
-    
+
     // Test input values
     let user_name: felt252 = 'John';
     let init_param1: felt252 = 'John@yahoo.com';
     let init_param2: felt252 = 'john is a boy';
-    
-
 
     // Call create_claim
-    let account_id = dispatcher
-        .create_token_account(user_name, init_param1, init_param2);
+    let account_id = dispatcher.create_token_account(user_name, init_param1, init_param2);
 
     // Validate that the claim ID is correctly incremented
     assert(account_id == 0, 'account_id should start from 0');
@@ -63,5 +58,4 @@ fn test_create_token_bount_account() {
     assert(token_bound_account.user_name == user_name, 'namemismatch');
     assert(token_bound_account.init_param1 == init_param1, 'init_param1 mismatch');
     assert(token_bound_account.init_param2 == init_param2, 'init_param2 mismatch');
-    
 }

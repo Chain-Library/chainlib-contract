@@ -41,15 +41,11 @@ pub mod ChainLib {
     #[abi(embed_v0)]
     impl ChainLibNetImpl of IChainLib<ContractState> {
         fn create_token_account(
-            ref self: ContractState,
-            user_name: felt252,
-            init_param1: felt252,
-            init_param2: felt252,
+            ref self: ContractState, user_name: felt252, init_param1: felt252, init_param2: felt252,
         ) -> u256 {
             // Validate input parameters.
             assert!(user_name != 0, "User name cannot be empty");
             assert!(init_param1 != 0, "Initialization parameter 1 cannot be empty");
-          
 
             // Retrieve the current account ID before incrementing.
             let account_id = self.current_account_id.read();
@@ -77,17 +73,18 @@ pub mod ChainLib {
             account_id
         }
 
-        fn get_token_bound_account(ref self: ContractState, id: u256) -> TokenBoundAccount{
+        fn get_token_bound_account(ref self: ContractState, id: u256) -> TokenBoundAccount {
             let token_bound_account = self.accounts.read(id);
             token_bound_account
         }
-        fn get_token_bound_account_by_owner(ref self: ContractState, address: ContractAddress) -> TokenBoundAccount{
+        fn get_token_bound_account_by_owner(
+            ref self: ContractState, address: ContractAddress
+        ) -> TokenBoundAccount {
             let token_bound_account = self.accountsaddr.read(address);
             token_bound_account
         }
         fn test_deployment(ref self: ContractState) -> bool {
             self.deployed.read()
-           
         }
     }
 }
