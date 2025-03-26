@@ -27,5 +27,4 @@ jobs:
         with:
           starknet-foundry-version: 0.32.0
       - name: Run cairo tests
-        working-directory: contract
         run: snforge test

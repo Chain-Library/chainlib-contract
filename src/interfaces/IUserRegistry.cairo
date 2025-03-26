@@ -1,3 +1,4 @@
+
 #[starknet::interface]
 trait IUserRegistry<TContractState> {
     /// Updates the name of the caller's profile
@@ -12,3 +13,4 @@ trait IUserRegistry<TContractState> {
     /// Retrieves a profile by the associated wallet address
     fn get_profile_by_address(self: @TContractState, address: ContractAddress) -> Profile;
 }
+
