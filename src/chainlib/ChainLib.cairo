@@ -1,12 +1,10 @@
 #[starknet::contract]
 pub mod ChainLib {
-
-    
     use starknet::{ContractAddress};
     use starknet::storage::{
         Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess
     };
-    
+
     #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
     pub enum ContentType {
         #[default]
@@ -15,7 +13,7 @@ pub mod ChainLib {
         Image,
         // Any other content type
     }
-    
+
     #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
     pub enum Category {
         Software,
@@ -24,7 +22,7 @@ pub mod ChainLib {
         Literature,
         Art
     }
-    
+
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
     pub struct ContentMetadata {
         pub content_id: felt252,
@@ -42,5 +40,4 @@ pub mod ChainLib {
         content: Map::<felt252, ContentMetadata>,
         content_tags: Map::<ContentMetadata, Array<felt252>>
     }
-
 }
