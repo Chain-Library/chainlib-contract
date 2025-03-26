@@ -1,4 +1,3 @@
-
 pub mod base {
     pub mod errors;
     pub mod types;
@@ -9,5 +8,4 @@ pub mod chainlib {
 pub mod interfaces {
     pub mod IChainLib;
 }
-
 
