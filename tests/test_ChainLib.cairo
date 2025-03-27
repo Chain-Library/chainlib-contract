@@ -128,7 +128,7 @@ fn test_verify_user_not_admin() {
 
     // Call register
     let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
-    // Retrieve the user to verify it was stored correctly
+    // Retrieve the user to verify user was stored correctly
     let user = dispatcher.retrieve_user_profile(account_id);
     assert(!user.verified, 'already verified');
 
