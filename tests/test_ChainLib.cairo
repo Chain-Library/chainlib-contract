@@ -110,8 +110,8 @@ fn test_verify_user() {
     let verify = dispatcher.verify_user(user.id);
     assert(verify, 'Verification Falied');
 
-    let verified_user = dispatcher.retrieve_user_profile(account_id);
-    assert(verified_user.verified, 'Not Verified');
+    let verified_user = dispatcher.is_verified(account_id);
+    assert(verified_user, 'Not Verified');
 }
 
 #[test]

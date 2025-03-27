@@ -174,6 +174,12 @@ pub mod ChainLib {
             user
         }
 
+        fn is_verified(ref self: ContractState, user_id: u256) -> bool {
+            let mut user = self.users.read(user_id);
+            user.verified
+        }
+
+
         fn getAdmin(self: @ContractState) -> ContractAddress {
             let admin = self.admin.read();
             admin

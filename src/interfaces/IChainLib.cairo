@@ -19,5 +19,6 @@ pub trait IChainLib<TContractState> {
     fn verify_user(ref self: TContractState, user_id: u256) -> bool;
     fn retrieve_user_profile(ref self: TContractState, user_id: u256) -> User;
     fn getAdmin(self: @TContractState) -> ContractAddress;
+    fn is_verified(ref self: TContractState, user_id: u256) -> bool;
 }
 
