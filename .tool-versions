@@ -1,5 +1,2 @@
 scarb 2.8.4
-<<<<<<< HEAD
-=======
-starknet-foundry 0.32.0
->>>>>>> upstream/main
+starknet-foundry 0.39.0
