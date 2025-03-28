@@ -6,5 +6,3 @@ trait IUserRegistry {
     fn deactivate_user(self: @ContractState, user: ContractAddress);
 }
 
-
-
