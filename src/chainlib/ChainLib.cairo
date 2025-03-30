@@ -8,6 +8,33 @@ pub mod ChainLib {
     use crate::interfaces::IChainLib::IChainLib;
     use crate::base::types::{TokenBoundAccount, User, Role, Rank};
 
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+    pub enum ContentType {
+        #[default]
+        Text,
+        Video,
+        Image,
+        // Any other content type
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+    pub enum Category {
+        Software,
+        #[default]
+        Education,
+        Literature,
+        Art
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct ContentMetadata {
+        pub content_id: felt252,
+        pub title: felt252,
+        pub description: felt252,
+        pub content_type: ContentType,
+        pub creator: ContractAddress,
+        pub category: Category
+    }
 
     #[storage]
     struct Storage {
@@ -19,6 +46,9 @@ pub mod ChainLib {
         next_course_id: u256,
         user_id: u256,
         users: Map<u256, User>,
+        creators_content: Map::<ContractAddress, ContentMetadata>,
+        content: Map::<felt252, ContentMetadata>,
+        content_tags: Map::<ContentMetadata, Array<felt252>>
     }
 
 
