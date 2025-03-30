@@ -186,3 +186,422 @@ pub mod ChainLib {
         }
     }
 }
+#[starknet::contract]
+mod UserRegistry {
+    use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
+    use super::IUserRegistry;
+
+    #[derive(Drop, Serde, Clone, Copy, PartialEq)]
+    struct UserProfile {
+        name: felt252,
+        email: felt252,
+        is_active: bool,
+        role: Role,
+        rank: Rank,
+        metadata: felt252,
+        created_at: u64,
+        updated_at: u64,
+        verified: bool,
+    }
+
+    // We need to expose this for the interface
+    #[derive(Drop, Serde, Clone, Copy, PartialEq)]
+    struct User {
+        name: felt252,
+        email: felt252,
+        is_active: bool,
+        role: Role,
+        rank: Rank,
+        metadata: felt252,
+        verified: bool,
+    }
+
+    #[derive(Drop, Serde, Copy, PartialEq)]
+    enum Role {
+        READER,
+        WRITER,
+        ADMIN,
+    }
+
+    #[derive(Drop, Serde, Copy, PartialEq)]
+    enum Rank {
+        LEVEL1,
+        LEVEL2,
+        LEVEL3,
+    }
+
+    struct Storage {
+        users: LegacyMap<ContractAddress, UserProfile>,
+        user_ids: LegacyMap<u256, ContractAddress>,
+        next_user_id: u256,
+        admin: ContractAddress,
+        active_users: LegacyMap<ContractAddress, bool>,
+    }
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        UserCreated: UserCreated,
+        UserUpdated: UserUpdated,
+        UserDeactivated: UserDeactivated,
+        UserReactivated: UserReactivated,
+        UserVerified: UserVerified,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct UserCreated {
+        user_id: u256,
+        address: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct UserUpdated {
+        user_id: u256,
+        fields: felt252,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct UserDeactivated {
+        user_id: u256,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct UserReactivated {
+        user_id: u256,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct UserVerified {
+        user_id: u256,
+        timestamp: u64,
+    }
+
+    #[constructor]
+    fn constructor(ref self: ContractState, admin: ContractAddress) {
+        self.admin.write(admin);
+        self.next_user_id.write(1);
+    }
+
+    // Helper function to convert UserProfile to User
+    fn profile_to_user(profile: UserProfile) -> User {
+        User {
+            name: profile.name,
+            email: profile.email,
+            is_active: profile.is_active,
+            role: profile.role,
+            rank: profile.rank,
+            metadata: profile.metadata,
+            verified: profile.verified,
+        }
+    }
+
+    #[abi(embed_v0)]
+    impl UserRegistryImpl of IUserRegistry<ContractState> {
+        #[external]
+        fn create_user(self: @ContractState, user: ContractAddress, name: felt252, email: felt252) {
+            let mut state = self.get_contract_state();
+            assert(!state.users.contains(user), "User already exists");
+
+            let user_id = state.next_user_id.read();
+            let new_profile = UserProfile {
+                name,
+                email,
+                is_active: true,
+                role: Role::READER, // Default role
+                rank: Rank::LEVEL1, // Default rank
+                metadata: 0, // Default metadata
+                created_at: get_block_timestamp(),
+                updated_at: get_block_timestamp(),
+                verified: false,
+            };
+
+            state.users.write(user, new_profile);
+            state.user_ids.write(user_id, user);
+            state.active_users.write(user, true);
+            state.next_user_id.write(user_id + 1);
+
+            state
+                .emit(
+                    Event::UserCreated(
+                        UserCreated { user_id, address: user, timestamp: get_block_timestamp() },
+                    ),
+                );
+        }
+        #[external]
+        fn update_user(self: @ContractState, user: ContractAddress, name: felt252, email: felt252) {
+            let mut state = self.get_contract_state();
+            let caller = get_caller_address();
+            let admin = state.admin.read();
+
+            assert(caller == user || caller == admin, "Unauthorized");
+            assert(state.users.contains(user), "User not found");
+            assert(state.active_users.read(user), "User inactive");
+
+            let mut profile = state.users.read(user);
+            let mut fields_updated = 0;
+            let mut changes_made = false;
+
+            if name != 0 && name != profile.name {
+                profile.name = name;
+                fields_updated = if fields_updated == 0 {
+                    'name'
+                } else {
+                    'multiple'
+                };
+                changes_made = true;
+            }
+
+            if email != 0 && email != profile.email {
+                profile.email = email;
+                fields_updated = if fields_updated == 0 {
+                    'email'
+                } else {
+                    'multiple'
+                };
+                changes_made = true;
+            }
+
+            if changes_made {
+                profile.updated_at = get_block_timestamp();
+                state.users.write(user, profile);
+
+                // Find user_id for the event
+                let mut user_id = 0;
+                let next_id = state.next_user_id.read();
+                let mut i = 1;
+                while i < next_id {
+                    if state.user_ids.read(i) == user {
+                        user_id = i;
+                        break;
+                    }
+                    i += 1;
+                }
+
+                state
+                    .emit(
+                        Event::UserUpdated(
+                            UserUpdated {
+                                user_id, fields: fields_updated, timestamp: get_block_timestamp(),
+                            },
+                        ),
+                    );
+            }
+        }
+
+        #[external]
+        fn get_user(self: @ContractState, user: ContractAddress) -> (felt252, felt252, bool) {
+            assert(self.users.contains(user), "User not found");
+            let profile = self.users.read(user);
+            (profile.name, profile.email, profile.is_active)
+        }
+
+        #[external]
+        fn deactivate_user(self: @ContractState, user: ContractAddress) {
+            let mut state = self.get_contract_state();
+            let caller = get_caller_address();
+            let admin = state.admin.read();
+
+            assert(caller == user, caller == admin, "Unauthorized");
+            assert(state.users.contains(user), "User not found");
+            assert(state.active_users.read(user), "Already inactive");
+
+            state.active_users.write(user, false);
+            let mut profile = state.users.read(user);
+            profile.is_active = false;
+            state.users.write(user, profile);
+
+            // Find user_id for the event
+            let mut user_id = 0;
+            let next_id = state.next_user_id.read();
+            let mut i = 1;
+            while i < next_id {
+                if state.user_ids.read(i) == user {
+                    user_id = i;
+                    break;
+                }
+                i += 1;
+            }
+
+            state
+                .emit(
+                    Event::UserDeactivated(
+                        UserDeactivated { user_id, timestamp: get_block_timestamp() },
+                    ),
+                );
+        }
+
+        // New functions for enhanced profile management
+        #[external]
+        fn create_user_profile(
+            ref self: ContractState, username: felt252, role: Role, rank: Rank, metadata: felt252,
+        ) -> u256 {
+            let caller = get_caller_address();
+            assert(!self.users.contains(caller), "User already exists");
+            let user_id = self.next_user_id.read();
+            let new_profile = UserProfile {
+                name: username,
+                email: 0, // Empty email
+                is_active: true,
+                role,
+                rank,
+                metadata,
+                created_at: get_block_timestamp(),
+                updated_at: get_block_timestamp(),
+                verified: false,
+            };
+
+            self.users.write(caller, new_profile);
+            self.user_ids.write(user_id, caller);
+            self.active_users.write(caller, true);
+            self.next_user_id.write(user_id + 1);
+
+            self
+                .emit(
+                    Event::UserCreated(
+                        UserCreated { user_id, address: caller, timestamp: get_block_timestamp() },
+                    ),
+                );
+
+            user_id
+        }
+
+        #[external]
+        fn retrieve_user_profile(self: @ContractState, user_id: u256) -> User {
+            let user_address = self.user_ids.read(user_id);
+            assert(self.users.contains(user_address), "User not found");
+            let profile = self.users.read(user_address);
+            profile_to_user(profile)
+        }
+
+        #[external]
+        fn retrieve_user_profile_by_address(
+            self: @ContractState, address: ContractAddress,
+        ) -> User {
+            assert(self.users.contains(address), "User not found");
+            let profile = self.users.read(address);
+            profile_to_user(profile)
+        }
+
+        #[external]
+        fn update_user_profile(
+            ref self: ContractState,
+            user_id: u256,
+            username: felt252,
+            role: Role,
+            rank: Rank,
+            metadata: felt252,
+        ) -> bool {
+            let caller = get_caller_address();
+            let user_address = self.user_ids.read(user_id);
+            let mut profile = self.users.read(user_address);
+            let admin = self.admin.read();
+
+            assert(caller == user_address || caller == admin, "Unauthorized");
+            assert(self.active_users.read(user_address), "User inactive");
+
+            let mut fields_updated = 0;
+            let mut changes_made = false;
+
+            if username != 0 && username != profile.name {
+                profile.name = username;
+                fields_updated = if fields_updated == 0 {
+                    'name'
+                } else {
+                    'multiple'
+                };
+                changes_made = true;
+            }
+
+            if role != profile.role {
+                profile.role = role;
+                fields_updated = if fields_updated == 0 {
+                    'role'
+                } else {
+                    'multiple'
+                };
+                changes_made = true;
+            }
+
+            if rank != profile.rank {
+                profile.rank = rank;
+                fields_updated = if fields_updated == 0 {
+                    'rank'
+                } else {
+                    'multiple'
+                };
+                changes_made = true;
+            }
+
+            if metadata != 0 && metadata != profile.metadata {
+                profile.metadata = metadata;
+                fields_updated = if fields_updated == 0 {
+                    'metadata'
+                } else {
+                    'multiple'
+                };
+                changes_made = true;
+            }
+
+            if changes_made {
+                profile.updated_at = get_block_timestamp();
+                self.users.write(user_address, profile);
+                self
+                    .emit(
+                        Event::UserUpdated(
+                            UserUpdated {
+                                user_id, fields: fields_updated, timestamp: get_block_timestamp(),
+                            },
+                        ),
+                    );
+            }
+
+            changes_made
+        }
+
+        #[external]
+        fn reactivate_user_profile(ref self: ContractState, user_id: u256) -> bool {
+            let caller = get_caller_address();
+            let user_address = self.user_ids.read(user_id);
+            let admin = self.admin.read();
+
+            assert(caller == user_address || caller == admin, "Unauthorized");
+            assert(!self.active_users.read(user_address), "Already active");
+
+            self.active_users.write(user_address, true);
+            let mut profile = self.users.read(user_address);
+            profile.is_active = true;
+            self.users.write(user_address, profile);
+
+            self
+                .emit(
+                    Event::UserReactivated(
+                        UserReactivated { user_id, timestamp: get_block_timestamp() },
+                    ),
+                );
+
+            true
+        }
+
+        #[external]
+        fn is_profile_active(self: @ContractState, user_id: u256) -> bool {
+            let user_address = self.user_ids.read(user_id);
+            self.active_users.read(user_address)
+        }
+
+        #[external]
+        fn is_verified(self: @ContractState, user_id: u256) -> bool {
+            let user_address = self.user_ids.read(user_id);
+            let profile = self.users.read(user_address);
+            profile.verified
+        }
+
+        #[external]
+        fn get_admin(self: @ContractState) -> ContractAddress {
+            self.admin.read()
+        }
+    }
+}
