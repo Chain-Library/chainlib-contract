@@ -20,13 +20,15 @@ pub trait IChainLib<TContractState> {
     fn retrieve_user_profile(ref self: TContractState, user_id: u256) -> User;
     fn getAdmin(self: @TContractState) -> ContractAddress;
     fn is_verified(ref self: TContractState, user_id: u256) -> bool;
-    
+
     fn set_content_price(ref self: TContractState, content_id: felt252, price: u256);
     fn purchase_content(
         ref self: TContractState, content_id: felt252, transaction_hash: felt252
     ) -> u256;
     fn get_purchase_details(ref self: TContractState, purchase_id: u256) -> Purchase;
-    fn get_user_purchases(ref self: TContractState, user_address: ContractAddress) -> Array<Purchase>;
+    fn get_user_purchases(
+        ref self: TContractState, user_address: ContractAddress
+    ) -> Array<Purchase>;
     fn verify_purchase(ref self: TContractState, purchase_id: u256) -> bool;
     fn update_purchase_status(
         ref self: TContractState, purchase_id: u256, status: PurchaseStatus

@@ -51,15 +51,18 @@ pub mod ChainLib {
         creators_content: Map::<ContractAddress, ContentMetadata>,
         content: Map::<felt252, ContentMetadata>,
         content_tags: Map::<ContentMetadata, Array<felt252>>,
-        
         // Purchase related storage
         content_prices: Map::<felt252, u256>, // Maps content_id to price
         next_purchase_id: u256, // Tracking the next available purchase ID
         purchases: Map::<u256, Purchase>, // Store purchases by ID
         user_purchase_count: Map::<ContractAddress, u32>, // Count of purchases per user
-        user_purchase_ids: Map::<(ContractAddress, u32), u256>, // Map of (user, index) to purchase ID
+        user_purchase_ids: Map::<
+            (ContractAddress, u32), u256
+        >, // Map of (user, index) to purchase ID
         content_purchase_count: Map::<felt252, u32>, // Count of purchases per content
-        content_purchase_ids: Map::<(felt252, u32), u256>, // Map of (content_id, index) to purchase ID
+        content_purchase_ids: Map::<
+            (felt252, u32), u256
+        >, // Map of (content_id, index) to purchase ID
     }
 
 
@@ -89,7 +92,7 @@ pub mod ChainLib {
     pub struct UserCreated {
         pub id: u256,
     }
-    
+
     #[derive(Drop, starknet::Event)]
     pub struct ContentPurchased {
         pub purchase_id: u256,
@@ -98,7 +101,7 @@ pub mod ChainLib {
         pub price: u256,
         pub timestamp: u64,
     }
-    
+
     #[derive(Drop, starknet::Event)]
     pub struct PurchaseStatusUpdated {
         pub purchase_id: u256,
@@ -242,7 +245,7 @@ pub mod ChainLib {
             // Return the verification status
             user.verified
         }
-        
+
         /// @notice Gets the admin address of the contract
         /// @dev Returns the address of the contract admin
         /// @param self The contract state reference.
@@ -251,7 +254,7 @@ pub mod ChainLib {
             let admin = self.admin.read();
             admin
         }
-        
+
         /// @notice Sets the price for a content item (admin only)
         /// @dev This function allows the admin to set or update the price of a content item.
         /// @param self The contract state reference.
@@ -261,7 +264,7 @@ pub mod ChainLib {
             // Only admin can set content prices
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Admin only');
-            
+
             // Set the price for the content
             self.content_prices.write(content_id, price);
         }
@@ -278,58 +281,50 @@ pub mod ChainLib {
             // Validate input parameters
             assert!(content_id != 0, "Content ID cannot be empty");
             assert!(transaction_hash != 0, "Transaction hash cannot be empty");
-            
+
             // Get the price for the content
             let price = self.content_prices.read(content_id);
             assert!(price > 0, "Content either doesn't exist");
-            
+
             // Get the buyer's address
             let buyer = get_caller_address();
-            
+
             // Get the next purchase ID and increment for future use
             let purchase_id = self.next_purchase_id.read();
             self.next_purchase_id.write(purchase_id + 1);
-            
+
             // Create the purchase record
             let purchase = Purchase {
                 id: purchase_id,
                 content_id: content_id,
                 buyer: buyer,
                 price: price,
-                status: PurchaseStatus::Pending, 
+                status: PurchaseStatus::Pending,
                 timestamp: get_block_timestamp(),
                 transaction_hash: transaction_hash,
             };
-            
+
             // Store the purchase in the purchases mapping
             self.purchases.write(purchase_id, purchase);
-            
+
             // Add the purchase ID to the user's purchase list
             let user_purchase_count = self.user_purchase_count.read(buyer);
             self.user_purchase_ids.write((buyer, user_purchase_count), purchase_id);
             self.user_purchase_count.write(buyer, user_purchase_count + 1);
-            
+
             // Add the purchase ID to the content's purchase list
             let content_purchase_count = self.content_purchase_count.read(content_id);
             self.content_purchase_ids.write((content_id, content_purchase_count), purchase_id);
             self.content_purchase_count.write(content_id, content_purchase_count + 1);
-            
+
             // Emit event for the purchase
             let timestamp = get_block_timestamp();
-            self.emit(
-                ContentPurchased {
-                    purchase_id,
-                    content_id,
-                    buyer,
-                    price,
-                    timestamp,
-                }
-            );
-            
+            self.emit(ContentPurchased { purchase_id, content_id, buyer, price, timestamp, });
+
             // Return the purchase ID
             purchase_id
         }
-        
+
         /// @notice Retrieves details of a specific purchase.
         /// @dev Fetches purchase information by its ID.
         /// @param self The contract state reference.
@@ -340,7 +335,7 @@ pub mod ChainLib {
             let purchase = self.purchases.read(purchase_id);
             purchase
         }
-        
+
         /// @notice Retrieves all purchases made by a specific user.
         /// @dev Returns an array of purchase records for the user.
         /// @param self The contract state reference.
@@ -351,31 +346,31 @@ pub mod ChainLib {
         ) -> Array<Purchase> {
             // Initialize an empty array to hold the purchases
             let mut purchases: Array<Purchase> = ArrayTrait::new();
-            
+
             // Get the number of purchases for this user
             let purchase_count = self.user_purchase_count.read(user_address);
-            
+
             // Iterate through the purchase IDs and fetch each purchase
             let mut i: u32 = 0;
-            
+
             while i < purchase_count {
                 // Get the purchase ID at the current index
                 let purchase_id = self.user_purchase_ids.read((user_address, i));
-                
+
                 // Fetch the purchase details using the ID
                 let purchase = self.purchases.read(purchase_id);
-                
-                // Add the purchase to the array 
+
+                // Add the purchase to the array
                 purchases.append(purchase);
-                
+
                 // Move to the next index
                 i += 1;
             };
-            
+
             // Return the array of purchases
             purchases
         }
-        
+
         /// @notice Verifies if a purchase is valid and completed.
         /// @dev Checks the status of a purchase to confirm it has been completed successfully.
         /// @param self The contract state reference.
@@ -384,7 +379,7 @@ pub mod ChainLib {
         fn verify_purchase(ref self: ContractState, purchase_id: u256) -> bool {
             // Get the purchase details
             let purchase = self.purchases.read(purchase_id);
-            
+
             // A purchase is valid if its status is Completed
             if purchase.status == PurchaseStatus::Completed {
                 return true;
@@ -392,7 +387,7 @@ pub mod ChainLib {
                 return false;
             }
         }
-        
+
         /// @notice Updates the status of a purchase.
         /// @dev Only admin can update the status to prevent unauthorized changes.
         /// @param self The contract state reference.
@@ -405,22 +400,22 @@ pub mod ChainLib {
             // Only admin can update purchase status
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Only admin can update status');
-            
+
             // Get the current purchase
             let mut purchase = self.purchases.read(purchase_id);
-            
+
             // Validate that we're not trying to update a purchase that doesn't exist
             assert(purchase.id == purchase_id, 'Purchase does not exist');
-            
+
             // Update the status
             purchase.status = status;
-            
+
             // Save the updated purchase
             self.purchases.write(purchase_id, purchase);
-            
+
             // Emit event for the status update
             let timestamp = get_block_timestamp();
-            
+
             // Convert PurchaseStatus to u8
             let status_code: u8 = match status {
                 PurchaseStatus::Pending => 0_u8,
@@ -428,15 +423,9 @@ pub mod ChainLib {
                 PurchaseStatus::Failed => 2_u8,
                 PurchaseStatus::Refunded => 3_u8,
             };
-            
-            self.emit(
-                PurchaseStatusUpdated {
-                    purchase_id,
-                    new_status: status_code,
-                    timestamp,
-                }
-            );
-            
+
+            self.emit(PurchaseStatusUpdated { purchase_id, new_status: status_code, timestamp, });
+
             true
         }
     }
