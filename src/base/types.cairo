@@ -9,7 +9,7 @@ pub struct TokenBoundAccount {
     pub created_at: u64,
     pub updated_at: u64,
 }
-#[derive(Drop, Serde, starknet::Store)]
+#[derive(Drop, Serde, starknet::Store, Clone)]
 pub struct User {
     pub id: u256,
     pub username: felt252,
