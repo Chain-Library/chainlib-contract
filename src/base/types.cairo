@@ -38,3 +38,22 @@ pub enum Rank {
     EXPERT,
 }
 
+#[derive(Copy, Drop, Serde, starknet::Store, Clone, PartialEq, Debug)]
+pub enum PurchaseStatus {
+    #[default]
+    Pending,
+    Completed,
+    Failed,
+    Refunded
+}
+
+#[derive(Drop, Serde, starknet::Store, Debug)]
+pub struct Purchase {
+    pub id: u256,
+    pub content_id: felt252,
+    pub buyer: ContractAddress,
+    pub price: u256,
+    pub status: PurchaseStatus,
+    pub timestamp: u64,
+    pub transaction_hash: felt252,
+}
