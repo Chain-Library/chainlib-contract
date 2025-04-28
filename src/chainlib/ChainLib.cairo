@@ -234,14 +234,14 @@ pub mod ChainLib {
         }
 
 
-   /// @notice Registers new content in the system.
-   /// @dev Only users with WRITER role can register content.
-   /// @param self The contract state reference.
-   /// @param title The title of the content (cannot be empty).
-   /// @param description The description of the content.
-   /// @param content_type The type of content being registered.
-   /// @param category The category the content belongs to.
-   /// @return felt252 Returns the unique identifier of the registered content.
+        /// @notice Registers new content in the system.
+        /// @dev Only users with WRITER role can register content.
+        /// @param self The contract state reference.
+        /// @param title The title of the content (cannot be empty).
+        /// @param description The description of the content.
+        /// @param content_type The type of content being registered.
+        /// @param category The category the content belongs to.
+        /// @return felt252 Returns the unique identifier of the registered content.
         fn register_content(
             ref self: ContractState,
             title: felt252,
