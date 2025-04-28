@@ -21,7 +21,7 @@ pub trait IChainLib<TContractState> {
     fn getAdmin(self: @TContractState) -> ContractAddress;
     fn is_verified(ref self: TContractState, user_id: u256) -> bool;
     
-    // Content Purchase Management
+    fn set_content_price(ref self: TContractState, content_id: felt252, price: u256);
     fn purchase_content(
         ref self: TContractState, content_id: felt252, transaction_hash: felt252
     ) -> u256;

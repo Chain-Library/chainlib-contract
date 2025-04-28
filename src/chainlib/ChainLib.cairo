@@ -236,22 +236,42 @@ pub mod ChainLib {
         }
 
         fn is_verified(ref self: ContractState, user_id: u256) -> bool {
-            let mut user = self.users.read(user_id);
+            // Get the user from storage
+            let user = self.users.read(user_id);
+
+            // Return the verification status
             user.verified
         }
-
-
+        
+        /// @notice Gets the admin address of the contract
+        /// @dev Returns the address of the contract admin
+        /// @param self The contract state reference.
+        /// @return The admin address
         fn getAdmin(self: @ContractState) -> ContractAddress {
             let admin = self.admin.read();
             admin
         }
+        
+        /// @notice Sets the price for a content item (admin only)
+        /// @dev This function allows the admin to set or update the price of a content item.
+        /// @param self The contract state reference.
+        /// @param content_id The unique identifier of the content.
+        /// @param price The price to set for the content.
+        fn set_content_price(ref self: ContractState, content_id: felt252, price: u256) {
+            // Only admin can set content prices
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Admin only');
+            
+            // Set the price for the content
+            self.content_prices.write(content_id, price);
+        }
 
-        /// @notice Processes a content purchase transaction.
-        /// @dev Creates a purchase record, verifies payment, and emits an event.
+        /// @notice Initiates a purchase for a specific content.
+        /// @dev Creates a purchase record with a pending status and emits an event.
         /// @param self The contract state reference.
         /// @param content_id The unique identifier of the content being purchased.
-        /// @param transaction_hash The hash of the transaction for verification purposes.
-        /// @return purchase_id The unique identifier assigned to the purchase.
+        /// @param transaction_hash The hash of the transaction being used for payment.
+        /// @return The unique ID of the newly created purchase.
         fn purchase_content(
             ref self: ContractState, content_id: felt252, transaction_hash: felt252
         ) -> u256 {
@@ -261,7 +281,7 @@ pub mod ChainLib {
             
             // Get the price for the content
             let price = self.content_prices.read(content_id);
-            assert!(price > 0, "Content either doesn't exist or is not for sale");
+            assert!(price > 0, "Content either doesn't exist");
             
             // Get the buyer's address
             let buyer = get_caller_address();
@@ -276,7 +296,7 @@ pub mod ChainLib {
                 content_id: content_id,
                 buyer: buyer,
                 price: price,
-                status: PurchaseStatus::Pending, // Initial status is pending until payment is verified
+                status: PurchaseStatus::Pending, 
                 timestamp: get_block_timestamp(),
                 transaction_hash: transaction_hash,
             };
