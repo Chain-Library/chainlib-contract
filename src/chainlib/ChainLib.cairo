@@ -5,8 +5,8 @@ pub mod ChainLib {
         StoragePointerWriteAccess,
     };
     use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+    use crate::base::types::{Rank, Role, TokenBoundAccount, User};
     use crate::interfaces::IChainLib::IChainLib;
-    use crate::base::types::{TokenBoundAccount, User, Role, Rank};
 
     #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
     pub enum ContentType {
@@ -23,7 +23,7 @@ pub mod ChainLib {
         #[default]
         Education,
         Literature,
-        Art
+        Art,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -33,7 +33,7 @@ pub mod ChainLib {
         pub description: felt252,
         pub content_type: ContentType,
         pub creator: ContractAddress,
-        pub category: Category
+        pub category: Category,
     }
 
     #[storage]
@@ -46,9 +46,9 @@ pub mod ChainLib {
         next_course_id: u256,
         user_id: u256,
         users: Map<u256, User>,
-        creators_content: Map::<ContractAddress, ContentMetadata>,
-        content: Map::<felt252, ContentMetadata>,
-        content_tags: Map::<ContentMetadata, Array<felt252>>
+        creators_content: Map<ContractAddress, ContentMetadata>,
+        content: Map<felt252, ContentMetadata>,
+        content_tags: Map<ContentMetadata, Array<felt252>>,
     }
 
 
@@ -85,7 +85,7 @@ pub mod ChainLib {
         /// @param init_param2 An additional initialization parameter.
         /// @return account_id The unique identifier assigned to the token-bound account.
         fn create_token_account(
-            ref self: ContractState, user_name: felt252, init_param1: felt252, init_param2: felt252
+            ref self: ContractState, user_name: felt252, init_param1: felt252, init_param2: felt252,
         ) -> u256 {
             // Ensure that the username is not empty.
             assert!(user_name != 0, "User name cannot be empty");
@@ -126,7 +126,7 @@ pub mod ChainLib {
             token_bound_account
         }
         fn get_token_bound_account_by_owner(
-            ref self: ContractState, address: ContractAddress
+            ref self: ContractState, address: ContractAddress,
         ) -> TokenBoundAccount {
             let token_bound_account = self.accountsaddr.read(address);
             token_bound_account
@@ -144,7 +144,7 @@ pub mod ChainLib {
         /// @param metadata Additional metadata associated with the user.
         /// @return user_id The unique identifier assigned to the user.
         fn register_user(
-            ref self: ContractState, username: felt252, role: Role, rank: Rank, metadata: felt252
+            ref self: ContractState, username: felt252, role: Role, rank: Rank, metadata: felt252,
         ) -> u256 {
             // Ensure that the username is not empty.
             assert!(username != 0, "User name cannot be empty");
@@ -160,7 +160,7 @@ pub mod ChainLib {
                 role: role,
                 rank: rank,
                 verified: false, // Default verification status is false.
-                metadata: metadata
+                metadata: metadata,
             };
 
             // Store the new user in the users mapping.

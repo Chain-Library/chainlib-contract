@@ -1,14 +1,12 @@
 // Import the contract modules
+use chain_lib::base::types::{Rank, Role};
 use chain_lib::chainlib::ChainLib;
-
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare};
 use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
-use chain_lib::base::types::{Role, Rank};
-
 
 fn setup() -> (ContractAddress, ContractAddress) {
     let declare_result = declare("ChainLib");
@@ -38,7 +36,6 @@ fn test_initial_data() {
     assert(admin == admin_address, 'deployment failed');
 }
 
-
 #[test]
 fn test_create_token_bount_account() {
     let (contract_address, _) = setup();
@@ -61,7 +58,6 @@ fn test_create_token_bount_account() {
     assert(token_bound_account.init_param1 == init_param1, 'init_param1 mismatch');
     assert(token_bound_account.init_param2 == init_param2, 'init_param2 mismatch');
 }
-
 
 #[test]
 fn test_create_user() {

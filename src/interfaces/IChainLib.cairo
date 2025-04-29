@@ -1,5 +1,5 @@
 use starknet::ContractAddress;
-use crate::base::types::{TokenBoundAccount, User, Role, Rank};
+use crate::base::types::{Rank, Role, TokenBoundAccount, User};
 
 #[starknet::interface]
 pub trait IChainLib<TContractState> {
@@ -10,11 +10,11 @@ pub trait IChainLib<TContractState> {
 
     fn get_token_bound_account(ref self: TContractState, id: u256) -> TokenBoundAccount;
     fn get_token_bound_account_by_owner(
-        ref self: TContractState, address: ContractAddress
+        ref self: TContractState, address: ContractAddress,
     ) -> TokenBoundAccount;
 
     fn register_user(
-        ref self: TContractState, username: felt252, role: Role, rank: Rank, metadata: felt252
+        ref self: TContractState, username: felt252, role: Role, rank: Rank, metadata: felt252,
     ) -> u256;
     fn verify_user(ref self: TContractState, user_id: u256) -> bool;
     fn retrieve_user_profile(ref self: TContractState, user_id: u256) -> User;
