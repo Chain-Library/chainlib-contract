@@ -166,7 +166,7 @@ pub mod ChainLib {
 
             // Retrieve the current account ID before incrementing.
             let account_id = self.current_account_id.read();
-            
+
             // Get the caller's address
             let caller_address = get_caller_address();
 
@@ -183,11 +183,11 @@ pub mod ChainLib {
 
             // Store the new account in the accounts mapping
             self.accounts.write(account_id, new_token_bound_account);
-            
+
             // Store the new account in the accountsaddr mapping
             // Make sure to use the caller's address as the key
             self.accountsaddr.write(caller_address, new_token_bound_account);
-            
+
             // For debugging, verify that the account was stored correctly
             let stored_account = self.accountsaddr.read(caller_address);
             assert(stored_account.id == account_id, 'Account storage failed');

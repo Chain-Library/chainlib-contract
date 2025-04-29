@@ -11,7 +11,9 @@ use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
 use chain_lib::base::types::{Role, Rank};
-use chain_lib::chainlib::ChainLib::ChainLib::{Event, PaymentProcessed, RecurringPaymentProcessed, PaymentVerified, RefundProcessed};
+use chain_lib::chainlib::ChainLib::ChainLib::{
+    Event, PaymentProcessed, RecurringPaymentProcessed, PaymentVerified, RefundProcessed
+};
 
 
 fn setup() -> (ContractAddress, ContractAddress) {
@@ -67,7 +69,7 @@ fn test_initial_payment() {
     let user_name: felt252 = 'Mark';
     let init_param1: felt252 = 'Mark@yahoo.com';
     let init_param2: felt252 = 'Mark is a boy';
-    let account_id = chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
 
     // Process an initial payment (caller is already set to subscriber)
     let amount: u256 = 100000000000000000; // 0.1 STRK in wei
@@ -148,7 +150,7 @@ fn test_token_bound_account_creation() {
     assert(account_by_addr.id == account_id, 'Account not found by address');
 }
 
-// Test that the initial payment event is emitted   
+// Test that the initial payment event is emitted
 #[test]
 fn test_initial_payment_event() {
     // Setup the contract
@@ -157,9 +159,9 @@ fn test_initial_payment_event() {
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
     let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
-    
+
     let mut spy = spy_events();
-    
+
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
@@ -170,7 +172,7 @@ fn test_initial_payment_event() {
     let user_name: felt252 = 'Mark';
     let init_param1: felt252 = 'Mark@yahoo.com';
     let init_param2: felt252 = 'Mark is a boy';
-    let account_id = chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
 
     // Process an initial payment (caller is already set to subscriber)
     let amount: u256 = 100000000000000000; // 0.1 STRK in wei
@@ -180,14 +182,19 @@ fn test_initial_payment_event() {
     assert(result == true, 'Initial payment failed');
 
     // Define the variables needed for the event
-    // Since this is the first payment and subscription in the test, 
+    // Since this is the first payment and subscription in the test,
     // and the contract initializes IDs at 0, the first payment and subscription will have ID 0
     let payment_id: u256 = 0;
     let subscription_id: u256 = 0;
 
     let expected_event = Event::PaymentProcessed(
         PaymentProcessed {
-            payment_id, subscription_id, amount, subscriber: subscriber_address, timestamp: get_block_timestamp() }
+            payment_id,
+            subscription_id,
+            amount,
+            subscriber: subscriber_address,
+            timestamp: get_block_timestamp()
+        }
     );
 
     spy.assert_emitted(@array![(contract_address, expected_event)]);
@@ -204,7 +211,7 @@ fn test_process_recurring_payment() {
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
     let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
-    
+
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
@@ -215,7 +222,7 @@ fn test_process_recurring_payment() {
     let user_name: felt252 = 'Mark';
     let init_param1: felt252 = 'Mark@yahoo.com';
     let init_param2: felt252 = 'Mark is a boy';
-    let account_id = chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
 
     // Process an initial payment (caller is already set to subscriber)
     let amount: u256 = 100000000000000000; // 0.1 STRK in wei
@@ -227,19 +234,18 @@ fn test_process_recurring_payment() {
     // Now process a recurring payment
     // Since this is the first subscription, its ID is 0
     let subscription_id: u256 = 0;
-    
+
     // Advance the block timestamp to simulate time passing (1 day in seconds)
     let one_day_in_seconds: u64 = 24 * 60 * 60;
     let initial_timestamp = get_block_timestamp();
     let new_timestamp = initial_timestamp + one_day_in_seconds;
     snforge_std::cheat_block_timestamp(contract_address, new_timestamp, CheatSpan::Indefinite);
-    
+
     // Process the recurring payment
     let recurring_result = subscription_dispatcher.process_recurring_payment(subscription_id);
-    
+
     // Verify the recurring payment was processed successfully
     assert(recurring_result == true, 'Recurring payment failed');
-
 }
 
 
@@ -253,7 +259,7 @@ fn test_process_recurring_payment_not_due() {
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
     let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
-    
+
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
@@ -264,7 +270,7 @@ fn test_process_recurring_payment_not_due() {
     let user_name: felt252 = 'Mark';
     let init_param1: felt252 = 'Mark@yahoo.com';
     let init_param2: felt252 = 'Mark is a boy';
-    let account_id = chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
 
     // Process an initial payment (caller is already set to subscriber)
     let amount: u256 = 100000000000000000; // 0.1 STRK in wei
@@ -276,7 +282,7 @@ fn test_process_recurring_payment_not_due() {
     // Now process a recurring payment
     // Since this is the first subscription, its ID is 0
     let subscription_id: u256 = 0;
-    
+
     // Process the recurring payment - this should fail because payment is not due yet
     subscription_dispatcher.process_recurring_payment(subscription_id);
 }
@@ -290,20 +296,20 @@ fn test_process_recurring_payment_not_found() {
 
     // Create dispatchers for both interfaces
     let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
-    
+
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
     // Set the caller to the subscriber for the entire test
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
-    
+
     // Try to process a recurring payment for a non-existent subscription ID
     // This should panic with "Subscription not found"
     let non_existent_subscription_id: u256 = 999;
     subscription_dispatcher.process_recurring_payment(non_existent_subscription_id);
 }
 
-// test for recurring payment events 
+// test for recurring payment events
 #[test]
 fn test_process_recurring_payment_event() {
     // Setup the contract
@@ -312,9 +318,9 @@ fn test_process_recurring_payment_event() {
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
     let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
-    
+
     let mut spy = spy_events();
-    
+
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
@@ -325,7 +331,7 @@ fn test_process_recurring_payment_event() {
     let user_name: felt252 = 'Mark';
     let init_param1: felt252 = 'Mark@yahoo.com';
     let init_param2: felt252 = 'Mark is a boy';
-    let account_id = chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
 
     // Process an initial payment (caller is already set to subscriber)
     let amount: u256 = 100000000000000000; // 0.1 ETH in wei
@@ -337,16 +343,16 @@ fn test_process_recurring_payment_event() {
     // Now process a recurring payment
     // Since this is the first subscription, its ID is 0
     let subscription_id: u256 = 0;
-    
+
     // Advance the block timestamp to simulate time passing (1 day in seconds)
     let one_day_in_seconds: u64 = 24 * 60 * 60;
     let initial_timestamp = get_block_timestamp();
     let new_timestamp = initial_timestamp + one_day_in_seconds;
     snforge_std::cheat_block_timestamp(contract_address, new_timestamp, CheatSpan::Indefinite);
-    
+
     // Process the recurring payment
     let recurring_result = subscription_dispatcher.process_recurring_payment(subscription_id);
-    
+
     // Verify the recurring payment was processed successfully
     assert(recurring_result == true, 'Recurring payment failed');
 
@@ -355,11 +361,11 @@ fn test_process_recurring_payment_event() {
 
     let expected_event = Event::RecurringPaymentProcessed(
         RecurringPaymentProcessed {
-            payment_id, 
-            subscription_id, 
-            amount, 
-            subscriber: subscriber_address, 
-            timestamp: new_timestamp 
+            payment_id,
+            subscription_id,
+            amount,
+            subscriber: subscriber_address,
+            timestamp: new_timestamp
         }
     );
 
@@ -372,12 +378,12 @@ fn test_process_recurring_payment_event() {
 #[should_panic(expected: 'Only admin can verify payments')]
 fn test_verify_payment_admin_only() {
     // Setup the contract
-    let (contract_address, admin_address) = setup();
+    let (contract_address, _) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
     let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
-    
+
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
@@ -388,7 +394,7 @@ fn test_verify_payment_admin_only() {
     let user_name: felt252 = 'Mark';
     let init_param1: felt252 = 'Mark@yahoo.com';
     let init_param2: felt252 = 'Mark is a boy';
-    let account_id = chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
 
     // Process an initial payment (caller is already set to subscriber)
     let amount: u256 = 100000000000000000; // 0.1 STRK in wei
@@ -396,14 +402,14 @@ fn test_verify_payment_admin_only() {
 
     // Verify the payment was processed successfully
     assert(result == true, 'Initial payment failed');
-    
+
     // The payment ID for the initial payment should be 0
     let payment_id: u256 = 0;
-    
+
     // Try to verify the payment as a non-admin (should panic)
     // We're still using the subscriber address as the caller
-    let verify_result = subscription_dispatcher.verify_payment(payment_id);
-    
+    subscription_dispatcher.verify_payment(payment_id);
+
     // This line should not be reached because the function should panic
     assert(false, 'Should have panicked');
 }
@@ -416,16 +422,16 @@ fn test_verify_payment_not_found() {
     let (contract_address, admin_address) = setup();
 
     // Create dispatchers for both interfaces
-    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let _chain_lib_dispatcher = IChainLibDispatcher { contract_address };
     let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
-    
+
     // Switch to admin before verifying the payment
     cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
-    
+
     // Try to verify a payment that doesn't exist
     let non_existent_payment_id: u256 = 999;
-    let verify_result = subscription_dispatcher.verify_payment(non_existent_payment_id);
-    
+    subscription_dispatcher.verify_payment(non_existent_payment_id);
+
     // This line should not be reached because the function should panic
     assert(false, 'Should have panicked');
 }
@@ -440,7 +446,7 @@ fn test_verify_payment_success() {
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
     let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
-    
+
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
@@ -451,7 +457,7 @@ fn test_verify_payment_success() {
     let user_name: felt252 = 'Mark';
     let init_param1: felt252 = 'Mark@yahoo.com';
     let init_param2: felt252 = 'Mark is a boy';
-    let account_id = chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
 
     // Process an initial payment (caller is already set to subscriber)
     let amount: u256 = 100000000000000000; // 0.1 STRK in wei
@@ -459,13 +465,13 @@ fn test_verify_payment_success() {
 
     // Verify the payment was processed successfully
     assert(result == true, 'Initial payment failed');
-    
+
     // Switch to admin for the rest of the test
     cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
-    
+
     // The payment ID for the initial payment should be 0
     let payment_id: u256 = 0;
-    
+
     // Try to verify the payment - this should fail because initial payments are auto-verified
     // This will panic with 'Payment already verified'
     subscription_dispatcher.verify_payment(payment_id);
@@ -475,15 +481,15 @@ fn test_verify_payment_success() {
 #[test]
 fn test_verify_payment_event() {
     // Setup the contract
-    let (contract_address, admin_address) = setup();
+    let (contract_address, _) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
     let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
-    
+
     // Set up event spy to capture verification event
     let mut spy = spy_events();
-    
+
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
@@ -494,7 +500,7 @@ fn test_verify_payment_event() {
     let user_name: felt252 = 'Mark';
     let init_param1: felt252 = 'Mark@yahoo.com';
     let init_param2: felt252 = 'Mark is a boy';
-    let account_id = chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
 
     // Process an initial payment (caller is already set to subscriber)
     let amount: u256 = 100000000000000000; // 0.1 STRK in wei
@@ -502,27 +508,235 @@ fn test_verify_payment_event() {
 
     // Verify the payment was processed successfully
     assert(result == true, 'Initial payment failed');
-    
+
     // The payment ID for the initial payment should be 0
     let payment_id: u256 = 0;
-    
+
     // The subscription ID for the first subscription should be 0
     let subscription_id: u256 = 0;
-    
+
     // Check that the PaymentProcessed event was emitted
     // This is a different event than PaymentVerified, but we can test that it was emitted
     // since we can't test PaymentVerified directly (payments are auto-verified)
     let timestamp = get_block_timestamp();
-    
+
     let expected_event = Event::PaymentProcessed(
         PaymentProcessed {
-            payment_id,
-            subscription_id,
-            subscriber: subscriber_address,
-            amount,
-            timestamp
+            payment_id, subscription_id, subscriber: subscriber_address, amount, timestamp
         }
     );
-    
+
+    spy.assert_emitted(@array![(contract_address, expected_event)]);
+}
+
+// ********* PROCESS REFUND TESTS *********
+#[test]
+#[should_panic(expected: 'Only admin can process refunds')]
+fn test_process_refund_admin_only() {
+    // Setup the contract
+    let (contract_address, _) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    // Set the caller to the subscriber for creating a subscription
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+
+    // Verify the payment was processed successfully
+    assert(result == true, 'Initial payment failed');
+
+    // Since this is the first subscription, its ID is 0
+    let subscription_id: u256 = 0;
+
+    // Try to process a refund as a non-admin (should panic)
+    // We're still using the subscriber address as the caller
+    subscription_dispatcher.process_refund(subscription_id);
+
+    // This line should not be reached because the function should panic
+    assert(false, 'Should have panicked');
+}
+
+// Test that the function panics when subscription is not found
+#[test]
+#[should_panic(expected: 'Subscription not found')]
+fn test_process_refund_subscription_not_found() {
+    // Setup the contract
+    let (contract_address, admin_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let _chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+
+    // Switch to admin before processing the refund
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+
+    // Try to refund a subscription that doesn't exist
+    let non_existent_subscription_id: u256 = 999;
+    subscription_dispatcher.process_refund(non_existent_subscription_id);
+
+    // This line should not be reached because the function should panic
+    assert(false, 'Should have panicked');
+}
+
+// Test that the function successfully processes a refund
+#[test]
+fn test_process_refund_success() {
+    // Setup the contract
+    let (contract_address, admin_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    // Set the caller to the subscriber for creating a subscription
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+
+    // Verify the payment was processed successfully
+    assert(result == true, 'Initial payment failed');
+
+    // Since this is the first subscription, its ID is 0
+    let subscription_id: u256 = 0;
+
+    // Switch to admin for the rest of the test
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+
+    // Process a refund
+    let refund_result = subscription_dispatcher.process_refund(subscription_id);
+
+    // Verify the refund was processed successfully
+    assert(refund_result == true, 'Refund processing failed');
+}
+
+// Test that the function panics when trying to refund an already refunded payment
+#[test]
+#[should_panic(expected: 'Subscription not active')]
+fn test_process_refund_already_refunded() {
+    // Setup the contract
+    let (contract_address, admin_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    // Set the caller to the subscriber for creating a subscription
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+
+    // Verify the payment was processed successfully
+    assert(result == true, 'Initial payment failed');
+
+    // Since this is the first subscription, its ID is 0
+    let subscription_id: u256 = 0;
+
+    // Switch to admin for the rest of the test
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+
+    // Process a refund
+    let refund_result = subscription_dispatcher.process_refund(subscription_id);
+
+    // Verify the refund was processed successfully
+    assert(refund_result == true, 'First refund processing failed');
+
+    // Try to process another refund for the same subscription
+    // This should fail because the subscription is no longer active
+    subscription_dispatcher.process_refund(subscription_id);
+
+    // This line should not be reached because the function should panic
+    assert(false, 'Should have panicked');
+}
+
+// Test that the RefundProcessed event is emitted when processing a refund
+#[test]
+fn test_process_refund_event() {
+    // Setup the contract
+    let (contract_address, admin_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    // Set the caller to the subscriber for creating a subscription
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+
+    // Verify the payment was processed successfully
+    assert(result == true, 'Initial payment failed');
+
+    // Since this is the first subscription, its ID is 0
+    let subscription_id: u256 = 0;
+
+    // The payment ID for the initial payment should be 0
+    let payment_id: u256 = 0;
+
+    // Set up event spy to capture refund event
+    let mut spy = spy_events();
+
+    // Switch to admin for the rest of the test
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+
+    // Process a refund
+    let refund_result = subscription_dispatcher.process_refund(subscription_id);
+
+    // Verify the refund was processed successfully
+    assert(refund_result == true, 'Refund processing failed');
+
+    // Check that the RefundProcessed event was emitted
+    let timestamp = get_block_timestamp();
+
+    let expected_event = Event::RefundProcessed(
+        RefundProcessed { payment_id, subscription_id, amount, timestamp }
+    );
+
     spy.assert_emitted(@array![(contract_address, expected_event)]);
 }
