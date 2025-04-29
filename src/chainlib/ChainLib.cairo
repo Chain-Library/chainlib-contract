@@ -6,7 +6,7 @@ pub mod ChainLib {
     };
     use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
     use crate::interfaces::IChainLib::IChainLib;
-    use crate::base::types::{TokenBoundAccount, User, Role, Rank};
+    use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions, permission_flags};
 
     #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
     pub enum ContentType {
@@ -48,7 +48,9 @@ pub mod ChainLib {
         users: Map<u256, User>,
         creators_content: Map::<ContractAddress, ContentMetadata>,
         content: Map::<felt252, ContentMetadata>,
-        content_tags: Map::<ContentMetadata, Array<felt252>>
+        content_tags: Map::<ContentMetadata, Array<felt252>>,
+        // Permission system storage
+        operator_permissions: Map::<(u256, ContractAddress), Permissions>, // Maps account_id and operator to permissions
     }
 
 
@@ -63,6 +65,10 @@ pub mod ChainLib {
     pub enum Event {
         TokenBoundAccountCreated: TokenBoundAccountCreated,
         UserCreated: UserCreated,
+        // Permission-related events
+        PermissionGranted: PermissionGranted,
+        PermissionRevoked: PermissionRevoked,
+        PermissionModified: PermissionModified,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -75,15 +81,28 @@ pub mod ChainLib {
         pub id: u256,
     }
 
+    // Permission-related events
+    #[derive(Drop, starknet::Event)]
+    pub struct PermissionGranted {
+        pub account_id: u256,
+        pub operator: ContractAddress,
+        pub permissions: Permissions,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PermissionRevoked {
+        pub account_id: u256,
+        pub operator: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PermissionModified {
+        pub account_id: u256,
+        pub permissions: Permissions,
+    }
+
     #[abi(embed_v0)]
     impl ChainLibNetImpl of IChainLib<ContractState> {
-        /// @notice Creates a new token-bound account.
-        /// @dev This function generates a unique ID, initializes the account, and emits an event.
-        /// @param self The contract state reference.
-        /// @param user_name The unique username associated with the token-bound account.
-        /// @param init_param1 An initialization parameter required for the account setup.
-        /// @param init_param2 An additional initialization parameter.
-        /// @return account_id The unique identifier assigned to the token-bound account.
         fn create_token_account(
             ref self: ContractState, user_name: felt252, init_param1: felt252, init_param2: felt252
         ) -> u256 {
@@ -95,16 +114,21 @@ pub mod ChainLib {
 
             // Retrieve the current account ID before incrementing.
             let account_id = self.current_account_id.read();
+            let caller = get_caller_address();
+
+            // Create default full permissions for the owner
+            let owner_permissions = Permissions { value: permission_flags::FULL };
 
             // Create a new token-bound account with the provided parameters.
             let new_token_bound_account = TokenBoundAccount {
                 id: account_id,
-                address: get_caller_address(), // Assign the caller's address.
+                address: caller, // Assign the caller's address.
                 user_name: user_name,
                 init_param1: init_param1,
                 init_param2: init_param2,
                 created_at: get_block_timestamp(), // Capture the creation timestamp.
-                updated_at: get_block_timestamp() // Set initial updated timestamp.
+                updated_at: get_block_timestamp(), // Set initial updated timestamp.
+                owner_permissions: owner_permissions, // Set owner permissions
             };
 
             // Store the new account in the accounts mapping.
@@ -133,16 +157,6 @@ pub mod ChainLib {
         }
 
 
-        /// @notice Registers a new user in the system.
-        /// @dev This function assigns a unique ID to the user, stores their profile, and emits an
-        /// event.
-        /// @param self The contract state reference.
-        /// @param username The unique username of the user.
-        /// @param wallet_address The blockchain address of the user.
-        /// @param role The role of the user (READER or WRITER).
-        /// @param rank The rank/level of the user.
-        /// @param metadata Additional metadata associated with the user.
-        /// @return user_id The unique identifier assigned to the user.
         fn register_user(
             ref self: ContractState, username: felt252, role: Role, rank: Rank, metadata: felt252
         ) -> u256 {
@@ -177,11 +191,6 @@ pub mod ChainLib {
         }
 
 
-        /// @notice Verifies a user in the system.
-        /// @dev Only an admin can verify a user.
-        /// @param self The contract state reference.
-        /// @param user_id The unique identifier of the user to be verified.
-        /// @return bool Returns true if the user is successfully verified.
         fn verify_user(ref self: ContractState, user_id: u256) -> bool {
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
@@ -191,11 +200,6 @@ pub mod ChainLib {
             self.users.write(user.id, user);
             true
         }
-        /// @notice Retrieves a user's profile from the system.
-        /// @dev This function fetches the user profile based on the provided user ID.
-        /// @param self The contract state reference.
-        /// @param user_id The unique identifier of the user whose profile is being retrieved.
-        /// @return User The user profile associated with the given user ID.
         fn retrieve_user_profile(ref self: ContractState, user_id: u256) -> User {
             // Read the user profile from the storage mapping.
             let user = self.users.read(user_id);
@@ -213,6 +217,115 @@ pub mod ChainLib {
         fn getAdmin(self: @ContractState) -> ContractAddress {
             let admin = self.admin.read();
             admin
+        }
+
+        // Permission system implementation
+
+        fn get_permissions(
+            self: @ContractState, account_id: u256, operator: ContractAddress
+        ) -> Permissions {
+            let account = self.accounts.read(account_id);
+            
+            // If the operator is the owner, return the owner's permissions
+            if operator == account.address {
+                return account.owner_permissions;
+            }
+            
+            // Otherwise, return the operator's permissions
+            self.operator_permissions.read((account_id, operator))
+        }
+        
+        fn set_operator_permissions(
+            ref self: ContractState, 
+            account_id: u256, 
+            operator: ContractAddress, 
+            permissions: Permissions
+        ) -> bool {
+            let caller = get_caller_address();
+            let account = self.accounts.read(account_id);
+            
+            // Ensure that the caller is the account owner or has MANAGE_OPERATORS permission
+            let caller_permissions = self.get_permissions(account_id, caller);
+            assert(
+                account.address == caller || 
+                (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0, 
+                'No permission'
+            );
+            
+            // Store the operator's permissions
+            self.operator_permissions.write((account_id, operator), permissions);
+            
+            // Emit the permission granted event
+            self.emit(PermissionGranted { 
+                account_id, 
+                operator, 
+                permissions 
+            });
+            
+            true
+        }
+        
+        fn revoke_operator(
+            ref self: ContractState, 
+            account_id: u256, 
+            operator: ContractAddress
+        ) -> bool {
+            let caller = get_caller_address();
+            let account = self.accounts.read(account_id);
+            
+            // Ensure that the caller is the account owner or has MANAGE_OPERATORS permission
+            let caller_permissions = self.get_permissions(account_id, caller);
+            assert(
+                account.address == caller || 
+                (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0, 
+                'No permission'
+            );
+            
+            // Set permissions to NONE
+            let none_permissions = Permissions { value: permission_flags::NONE };
+            self.operator_permissions.write((account_id, operator), none_permissions);
+            
+            // Emit the permission revoked event
+            self.emit(PermissionRevoked { 
+                account_id, 
+                operator 
+            });
+            
+            true
+        }
+        
+        fn has_permission(
+            self: @ContractState, 
+            account_id: u256, 
+            operator: ContractAddress, 
+            permission: u64
+        ) -> bool {
+            let permissions = self.get_permissions(account_id, operator);
+            (permissions.value & permission) != 0
+        }
+        
+        fn modify_account_permissions(
+            ref self: ContractState, 
+            account_id: u256, 
+            permissions: Permissions
+        ) -> bool {
+            let caller = get_caller_address();
+            let mut account = self.accounts.read(account_id);
+            
+            // Ensure that the caller is the account owner
+            assert(account.address == caller, 'Not owner');
+            
+            // Update the owner's permissions
+            account.owner_permissions = permissions;
+            self.accounts.write(account_id, account);
+            
+            // Emit the permission modified event
+            self.emit(PermissionModified { 
+                account_id, 
+                permissions 
+            });
+            
+            true
         }
     }
 }
