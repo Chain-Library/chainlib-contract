@@ -1,5 +1,5 @@
 use starknet::ContractAddress;
-#[derive(Drop, Serde, starknet::Store)]
+#[derive(Drop, Serde, starknet::Store, Copy)]
 pub struct TokenBoundAccount {
     pub id: u256,
     pub address: ContractAddress,
@@ -37,4 +37,3 @@ pub enum Rank {
     INTERMEDIATE,
     EXPERT,
 }
-
