@@ -50,7 +50,9 @@ pub mod ChainLib {
         content: Map::<felt252, ContentMetadata>,
         content_tags: Map::<ContentMetadata, Array<felt252>>,
         // Permission system storage
-        operator_permissions: Map::<(u256, ContractAddress), Permissions>, // Maps account_id and operator to permissions
+        operator_permissions: Map::<
+            (u256, ContractAddress), Permissions
+        >, // Maps account_id and operator to permissions
     }
 
 
@@ -225,106 +227,89 @@ pub mod ChainLib {
             self: @ContractState, account_id: u256, operator: ContractAddress
         ) -> Permissions {
             let account = self.accounts.read(account_id);
-            
+
             // If the operator is the owner, return the owner's permissions
             if operator == account.address {
                 return account.owner_permissions;
             }
-            
+
             // Otherwise, return the operator's permissions
             self.operator_permissions.read((account_id, operator))
         }
-        
+
         fn set_operator_permissions(
-            ref self: ContractState, 
-            account_id: u256, 
-            operator: ContractAddress, 
+            ref self: ContractState,
+            account_id: u256,
+            operator: ContractAddress,
             permissions: Permissions
         ) -> bool {
             let caller = get_caller_address();
             let account = self.accounts.read(account_id);
-            
+
             // Ensure that the caller is the account owner or has MANAGE_OPERATORS permission
             let caller_permissions = self.get_permissions(account_id, caller);
             assert(
-                account.address == caller || 
-                (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0, 
+                account.address == caller
+                    || (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0,
                 'No permission'
             );
-            
+
             // Store the operator's permissions
             self.operator_permissions.write((account_id, operator), permissions);
-            
+
             // Emit the permission granted event
-            self.emit(PermissionGranted { 
-                account_id, 
-                operator, 
-                permissions 
-            });
-            
+            self.emit(PermissionGranted { account_id, operator, permissions });
+
             true
         }
-        
+
         fn revoke_operator(
-            ref self: ContractState, 
-            account_id: u256, 
-            operator: ContractAddress
+            ref self: ContractState, account_id: u256, operator: ContractAddress
         ) -> bool {
             let caller = get_caller_address();
             let account = self.accounts.read(account_id);
-            
+
             // Ensure that the caller is the account owner or has MANAGE_OPERATORS permission
             let caller_permissions = self.get_permissions(account_id, caller);
             assert(
-                account.address == caller || 
-                (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0, 
+                account.address == caller
+                    || (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0,
                 'No permission'
             );
-            
+
             // Set permissions to NONE
             let none_permissions = Permissions { value: permission_flags::NONE };
             self.operator_permissions.write((account_id, operator), none_permissions);
-            
+
             // Emit the permission revoked event
-            self.emit(PermissionRevoked { 
-                account_id, 
-                operator 
-            });
-            
+            self.emit(PermissionRevoked { account_id, operator });
+
             true
         }
-        
+
         fn has_permission(
-            self: @ContractState, 
-            account_id: u256, 
-            operator: ContractAddress, 
-            permission: u64
+            self: @ContractState, account_id: u256, operator: ContractAddress, permission: u64
         ) -> bool {
             let permissions = self.get_permissions(account_id, operator);
             (permissions.value & permission) != 0
         }
-        
+
         fn modify_account_permissions(
-            ref self: ContractState, 
-            account_id: u256, 
-            permissions: Permissions
+            ref self: ContractState, account_id: u256, permissions: Permissions
         ) -> bool {
             let caller = get_caller_address();
             let mut account = self.accounts.read(account_id);
-            
+
             // Ensure that the caller is the account owner
             assert(account.address == caller, 'Not owner');
-            
+
             // Update the owner's permissions
             account.owner_permissions = permissions;
             self.accounts.write(account_id, account);
-            
+
             // Emit the permission modified event
-            self.emit(PermissionModified { 
-                account_id, 
-                permissions 
-            });
-            
+            self.emit(PermissionModified { account_id, permissions });
+
             true
         }
     }
