@@ -69,7 +69,7 @@ fn test_add_owner() {
 }
 
 #[test]
-#[should_panic(expected: NOT_AUTHORIZED)]
+#[should_panic(expected: 'NotAuthorized')]
 fn test_add_owner_unauthorized() {
     let contract_address = setup();
     let contract_instance = IAccountDelegationDispatcher { contract_address };
@@ -145,7 +145,7 @@ fn test_delegate_permission_unlimited() {
 }
 
 #[test]
-#[should_panic(expected: INVALID_DELEGATION)]
+#[should_panic(expected: 'InvalidDelegate')]
 fn test_delegate_permission_zero_address() {
     let contract_address = setup();
     let contract_instance = IAccountDelegationDispatcher { contract_address };
@@ -164,7 +164,7 @@ fn test_delegate_permission_zero_address() {
 }
 
 #[test]
-#[should_panic(expected: INVALID_EXPIRY)]
+#[should_panic(expected: 'InvalidExpiry')]
 fn test_delegate_permission_past_expiry() {
     let contract_address = setup();
     let contract_instance = IAccountDelegationDispatcher { contract_address };
@@ -186,7 +186,7 @@ fn test_delegate_permission_past_expiry() {
 
 
 #[test]
-#[should_panic(expected: INVALID_PERMISSION)]
+#[should_panic(expected: 'InvalidPermission')]
 fn test_delegate_invalid_permission() {
     let contract_address = setup();
     let contract_instance = IAccountDelegationDispatcher { contract_address };
@@ -238,7 +238,7 @@ fn test_revoke_delegation() {
 }
 
 #[test]
-#[should_panic(expected: NOT_AUTHORIZED)]
+#[should_panic(expected: 'NotAuthorized')]
 fn test_revoke_delegation_wrong_delegate() {
     let contract_address = setup();
     let contract_instance = IAccountDelegationDispatcher { contract_address };
@@ -301,7 +301,7 @@ fn test_use_delegation() {
 }
 
 #[test]
-#[should_panic(expected: ACTION_LIMIT_REACHED)]
+#[should_panic(expected: 'ActionLimitReached')]
 fn test_use_delegation_exceed_max_actions() {
     let contract_address = setup();
     let contract_instance = IAccountDelegationDispatcher { contract_address };
@@ -330,7 +330,7 @@ fn test_use_delegation_exceed_max_actions() {
 
 
 #[test]
-#[should_panic(expected: ('NotAuthorized',))]
+#[should_panic(expected: 'NotAuthorized')]
 fn test_use_delegation_wrong_delegate() {
     let contract_address = setup();
     let contract_instance = IAccountDelegationDispatcher { contract_address };
@@ -357,7 +357,7 @@ fn test_use_delegation_wrong_delegate() {
 
 
 #[test]
-#[should_panic(expected: ('DelegationNotActive',))]
+#[should_panic(expected: 'DelegationNotActive')]
 fn test_use_delegation_inactive() {
     let contract_address = setup();
     let contract_instance = IAccountDelegationDispatcher { contract_address };
