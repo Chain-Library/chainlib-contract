@@ -87,7 +87,7 @@ pub mod ChainLib {
         payments: Map::<u256, Payment>,
         // Similar counter-based approach for subscription payments
         subscription_payment_count: Map::<u256, u256>,
-        subscription_payment_by_index: Map::<(u256, u256), u256>
+        subscription_payment_by_index: Map::<(u256, u256), u256>,
         next_content_id: felt252,
         user_by_address: Map<ContractAddress, User>,
         // Permission system storage
@@ -161,6 +161,7 @@ pub mod ChainLib {
         pub subscription_id: u256,
         pub amount: u256,
         pub timestamp: u64,
+    }
 
     // Permission-related events
     #[derive(Drop, starknet::Event)]
