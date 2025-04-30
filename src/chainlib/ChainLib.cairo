@@ -117,7 +117,6 @@ pub mod ChainLib {
         PermissionGranted: PermissionGranted,
         PermissionRevoked: PermissionRevoked,
         PermissionModified: PermissionModified,
-
     }
 
     #[derive(Drop, starknet::Event)]
@@ -181,7 +180,6 @@ pub mod ChainLib {
     pub struct PermissionModified {
         pub account_id: u256,
         pub permissions: Permissions,
-
     }
 
 
