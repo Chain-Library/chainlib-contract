@@ -4,7 +4,9 @@ pub mod ChainLib {
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+    use starknet::{
+        ContractAddress, get_block_timestamp, get_caller_address, contract_address_const
+    };
     use crate::interfaces::IChainLib::IChainLib;
     use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions, permission_flags};
 
@@ -49,6 +51,8 @@ pub mod ChainLib {
         creators_content: Map::<ContractAddress, ContentMetadata>,
         content: Map::<felt252, ContentMetadata>,
         content_tags: Map::<ContentMetadata, Array<felt252>>,
+        next_content_id: felt252,
+        user_by_address: Map<ContractAddress, User>,
         // Permission system storage
         operator_permissions: Map::<
             (u256, ContractAddress), Permissions
@@ -67,6 +71,7 @@ pub mod ChainLib {
     pub enum Event {
         TokenBoundAccountCreated: TokenBoundAccountCreated,
         UserCreated: UserCreated,
+        ContentRegistered: ContentRegistered,
         // Permission-related events
         PermissionGranted: PermissionGranted,
         PermissionRevoked: PermissionRevoked,
@@ -101,6 +106,13 @@ pub mod ChainLib {
     pub struct PermissionModified {
         pub account_id: u256,
         pub permissions: Permissions,
+    }
+
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ContentRegistered {
+        pub content_id: felt252,
+        pub creator: ContractAddress
     }
 
     #[abi(embed_v0)]
@@ -182,8 +194,11 @@ pub mod ChainLib {
             // Store the new user in the users mapping.
             self.users.write(user_id, new_user);
 
+            let user_for_address = self.users.read(user_id);
+            self.user_by_address.write(user_for_address.wallet_address, user_for_address);
+
             // Increment the user ID counter for the next registration.
-            self.current_account_id.write(user_id + 1);
+            self.user_id.write(user_id + 1);
 
             // Emit an event to notify about the new user registration.
             self.emit(UserCreated { id: user_id });
@@ -311,6 +326,58 @@ pub mod ChainLib {
             self.emit(PermissionModified { account_id, permissions });
 
             true
+        }
+
+
+        /// @notice Registers new content in the system.
+        /// @dev Only users with WRITER role can register content.
+        /// @param self The contract state reference.
+        /// @param title The title of the content (cannot be empty).
+        /// @param description The description of the content.
+        /// @param content_type The type of content being registered.
+        /// @param category The category the content belongs to.
+        /// @return felt252 Returns the unique identifier of the registered content.
+        fn register_content(
+            ref self: ContractState,
+            title: felt252,
+            description: felt252,
+            content_type: ContentType,
+            category: Category
+        ) -> felt252 {
+            assert!(title != 0, "Title cannot be empty");
+            assert!(description != 0, "Description cannot be empty");
+
+            let creator = get_caller_address();
+            let user = self.user_by_address.read(creator);
+
+            assert!(user.role == Role::WRITER, "Only WRITER can post content");
+
+            let content_id = self.next_content_id.read();
+
+            let content_metadata = ContentMetadata {
+                content_id: content_id,
+                title: title,
+                description: description,
+                content_type: content_type,
+                creator: creator,
+                category: category
+            };
+
+            self.content.write(content_id, content_metadata);
+            self.creators_content.write(creator, content_metadata);
+            self.next_content_id.write(content_id + 1);
+
+            self.emit(ContentRegistered { content_id: content_id, creator: creator });
+
+            content_id
+        }
+
+
+        fn get_content(ref self: ContractState, content_id: felt252) -> ContentMetadata {
+            let content_metadata = self.content.read(content_id);
+
+            assert!(content_metadata.content_id == content_id, "Content does not exist");
+            content_metadata
         }
     }
 }

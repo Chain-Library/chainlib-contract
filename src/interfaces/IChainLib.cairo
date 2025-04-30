@@ -1,5 +1,6 @@
 use starknet::ContractAddress;
 use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions};
+use crate::chainlib::ChainLib::ChainLib::{Category, ContentType, ContentMetadata};
 
 #[starknet::interface]
 pub trait IChainLib<TContractState> {
@@ -44,5 +45,15 @@ pub trait IChainLib<TContractState> {
     fn modify_account_permissions(
         ref self: TContractState, account_id: u256, permissions: Permissions
     ) -> bool;
+
+    fn register_content(
+        ref self: TContractState,
+        title: felt252,
+        description: felt252,
+        content_type: ContentType,
+        category: Category
+    ) -> felt252;
+
+    fn get_content(ref self: TContractState, content_id: felt252) -> ContentMetadata;
 }
 
