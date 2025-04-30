@@ -13,7 +13,7 @@ pub struct TokenBoundAccount {
     pub owner_permissions: Permissions, // Owner's permissions
 }
 
-#[derive(Drop, Serde, starknet::Store)]
+#[derive(Drop, Serde, starknet::Store, Clone)]
 pub struct User {
     pub id: u256,
     pub username: felt252,
