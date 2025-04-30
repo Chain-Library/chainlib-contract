@@ -7,6 +7,5 @@ pub mod chainlib {
 }
 pub mod interfaces {
     pub mod IChainLib;
-    pub mod ISubscription;
 }
 

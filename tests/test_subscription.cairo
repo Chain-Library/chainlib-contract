@@ -1,7 +1,5 @@
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
-use chain_lib::interfaces::ISubscription::{
-    ISubscription, ISubscriptionDispatcher, ISubscriptionDispatcherTrait
-};
+
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare, spy_events,
     EventSpyAssertionsTrait
@@ -57,7 +55,7 @@ fn test_initial_payment() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
@@ -87,7 +85,7 @@ fn test_initial_payment_invalid_subscriber() {
     let (contract_address, _) = setup();
 
     // Create subscription dispatcher
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create an invalid subscriber address
     let invalid_subscriber: ContractAddress = contract_address_const::<'invalid'>();
@@ -106,7 +104,7 @@ fn test_initial_payment_unauthorized() {
 
     // Create dispatchers
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a token-bound account
     let (_, subscriber_address) = create_test_account(chain_lib_dispatcher);
@@ -158,7 +156,7 @@ fn test_initial_payment_event() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     let mut spy = spy_events();
 
@@ -210,7 +208,7 @@ fn test_process_recurring_payment() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
@@ -258,7 +256,7 @@ fn test_process_recurring_payment_not_due() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
@@ -295,7 +293,7 @@ fn test_process_recurring_payment_not_found() {
     let (contract_address, _) = setup();
 
     // Create dispatchers for both interfaces
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
@@ -317,7 +315,7 @@ fn test_process_recurring_payment_event() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     let mut spy = spy_events();
 
@@ -382,7 +380,7 @@ fn test_verify_payment_admin_only() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
@@ -423,7 +421,7 @@ fn test_verify_payment_not_found() {
 
     // Create dispatchers for both interfaces
     let _chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Switch to admin before verifying the payment
     cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
@@ -445,7 +443,7 @@ fn test_verify_payment_success() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
@@ -485,7 +483,7 @@ fn test_verify_payment_event() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Set up event spy to capture verification event
     let mut spy = spy_events();
@@ -538,7 +536,7 @@ fn test_process_refund_admin_only() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
@@ -579,7 +577,7 @@ fn test_process_refund_subscription_not_found() {
 
     // Create dispatchers for both interfaces
     let _chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Switch to admin before processing the refund
     cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
@@ -600,7 +598,7 @@ fn test_process_refund_success() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
@@ -643,7 +641,7 @@ fn test_process_refund_already_refunded() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
@@ -692,7 +690,7 @@ fn test_process_refund_event() {
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
-    let subscription_dispatcher = ISubscriptionDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();

@@ -9,8 +9,6 @@ pub mod ChainLib {
     };
     use crate::interfaces::IChainLib::IChainLib;
 
-    use crate::interfaces::ISubscription::ISubscription;
-
     use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions, permission_flags};
 
 
@@ -464,12 +462,7 @@ pub mod ChainLib {
             assert!(content_metadata.content_id == content_id, "Content does not exist");
             content_metadata
         }
-    }
 
-    /// @notice Implementation of the ISubscription interface for handling subscription-related
-    /// payments
-    #[abi(embed_v0)]
-    impl ChainSubscriptionImpl of ISubscription<ContractState> {
         /// @notice Processes the initial payment for a new subscription
         /// @param amount The amount to be charged for the initial payment
         /// @param subscriber The address of the subscriber
