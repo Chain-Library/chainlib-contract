@@ -59,7 +59,6 @@ pub mod ChainLib {
         operator_permissions: Map::<
             (u256, ContractAddress), Permissions
         >, // Maps account_id and operator to permissions
-        content_tags: Map::<ContentMetadata, Array<felt252>>,
         // Purchase related storage
         content_prices: Map::<felt252, u256>, // Maps content_id to price
         next_purchase_id: u256, // Tracking the next available purchase ID
