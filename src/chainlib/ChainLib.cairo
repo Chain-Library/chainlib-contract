@@ -282,7 +282,6 @@ pub mod ChainLib {
             let content_metadata = self.content.read(content_id);
 
             assert!(content_metadata.content_id == content_id, "Content does not exist");
-
             content_metadata
         }
     }
