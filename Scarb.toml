@@ -47,3 +47,6 @@ test = "snforge test"
 
 # [features]                                                 # Used for conditional compilation
 # enable_for_tests = []                                      # Feature name and list of other features that should be enabled with it
+
+[profile.dev.cairo]
+unstable-add-statements-code-locations-debug-info = true
