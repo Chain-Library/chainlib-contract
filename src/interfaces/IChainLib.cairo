@@ -1,5 +1,6 @@
 use starknet::ContractAddress;
-use crate::base::types::{TokenBoundAccount, User, Role, Rank, Purchase, PurchaseStatus};
+use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions, Purchase, PurchaseStatus};
+use crate::chainlib::ChainLib::ChainLib::{Category, ContentType, ContentMetadata};
 
 #[starknet::interface]
 pub trait IChainLib<TContractState> {
@@ -20,6 +21,41 @@ pub trait IChainLib<TContractState> {
     fn retrieve_user_profile(ref self: TContractState, user_id: u256) -> User;
     fn getAdmin(self: @TContractState) -> ContractAddress;
     fn is_verified(ref self: TContractState, user_id: u256) -> bool;
+
+    // Permission system
+    fn get_permissions(
+        self: @TContractState, account_id: u256, operator: ContractAddress
+    ) -> Permissions;
+
+    fn set_operator_permissions(
+        ref self: TContractState,
+        account_id: u256,
+        operator: ContractAddress,
+        permissions: Permissions
+    ) -> bool;
+
+    fn revoke_operator(
+        ref self: TContractState, account_id: u256, operator: ContractAddress
+    ) -> bool;
+
+    fn has_permission(
+        self: @TContractState, account_id: u256, operator: ContractAddress, permission: u64
+    ) -> bool;
+
+    fn modify_account_permissions(
+        ref self: TContractState, account_id: u256, permissions: Permissions
+    ) -> bool;
+
+    fn register_content(
+        ref self: TContractState,
+        title: felt252,
+        description: felt252,
+        content_type: ContentType,
+        category: Category
+    ) -> felt252;
+
+    fn get_content(ref self: TContractState, content_id: felt252) -> ContentMetadata;
+}
 
     fn set_content_price(ref self: TContractState, content_id: felt252, price: u256);
     fn purchase_content(
