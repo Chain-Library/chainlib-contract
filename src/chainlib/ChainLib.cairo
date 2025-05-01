@@ -10,6 +10,30 @@ pub mod ChainLib {
     use crate::interfaces::IChainLib::IChainLib;
     use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions, permission_flags};
 
+    // Define delegation-specific structures and constants
+
+    // New delegation flags - extending the existing permission_flags
+    pub mod delegation_flags {
+        // Using higher bits to avoid collision with existing permission flags
+        const DELEGATE_TRANSFER: u64 = 0x10000;
+        const DELEGATE_CONTENT: u64 = 0x20000;
+        const DELEGATE_ADMIN: u64 = 0x40000;
+        const DELEGATE_USER: u64 = 0x80000;
+        // Combined flag for full delegation capabilities
+        const FULL_DELEGATION: u64 = 0xF0000;
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct DelegationInfo {
+        pub delegator: ContractAddress, // The account owner who created the delegation
+        pub delegate: ContractAddress, // The account that receives delegated permissions
+        pub permissions: u64, // Delegated permissions as bit flags
+        pub expiration: u64, // Timestamp when delegation expires (0 = no expiration)
+        pub max_actions: u64, // Maximum number of actions allowed (0 = unlimited)
+        pub action_count: u64, // Current number of actions performed
+        pub active: bool // Whether this delegation is active
+    }
+
     #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
     pub enum ContentType {
         #[default]
@@ -57,6 +81,14 @@ pub mod ChainLib {
         operator_permissions: Map::<
             (u256, ContractAddress), Permissions
         >, // Maps account_id and operator to permissions
+        // NEW - Delegation system storage
+        delegations: Map::<
+            (ContractAddress, u64), DelegationInfo
+        >, // Maps (delegator, permission) to delegation info
+        delegation_nonces: Map::<ContractAddress, u64>, // Track delegations for each address
+        delegation_history: Map::<
+            (ContractAddress, ContractAddress), u64
+        >, // Track history between delegator and delegate
     }
 
 
@@ -76,6 +108,11 @@ pub mod ChainLib {
         PermissionGranted: PermissionGranted,
         PermissionRevoked: PermissionRevoked,
         PermissionModified: PermissionModified,
+        // NEW - Delegation-related events
+        DelegationCreated: DelegationCreated,
+        DelegationRevoked: DelegationRevoked,
+        DelegationUsed: DelegationUsed,
+        DelegationExpired: DelegationExpired,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -108,6 +145,35 @@ pub mod ChainLib {
         pub permissions: Permissions,
     }
 
+    // NEW - Delegation-related events
+    #[derive(Drop, starknet::Event)]
+    pub struct DelegationCreated {
+        pub delegator: ContractAddress,
+        pub delegate: ContractAddress,
+        pub permissions: u64,
+        pub expiration: u64,
+        pub max_actions: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct DelegationRevoked {
+        pub delegator: ContractAddress,
+        pub delegate: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct DelegationUsed {
+        pub delegator: ContractAddress,
+        pub delegate: ContractAddress,
+        pub permission: u64,
+        pub remaining_actions: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct DelegationExpired {
+        pub delegator: ContractAddress,
+        pub delegate: ContractAddress,
+    }
 
     #[derive(Drop, starknet::Event)]
     pub struct ContentRegistered {
@@ -378,6 +444,172 @@ pub mod ChainLib {
 
             assert!(content_metadata.content_id == content_id, "Content does not exist");
             content_metadata
+        }
+
+        // NEW - Account Delegation Implementation
+
+        // Creates a delegation for account permissions
+        // delegate The address that will receive delegated permissions
+        // permissions The permissions to be delegated (using delegation_flags)
+        // expiration Timestamp when the delegation expires (0 for no expiration)
+        // max_actions Maximum number of actions allowed (0 for unlimited)
+        //  bool Returns true if delegation was created successfully
+        fn create_delegation(
+            ref self: ContractState,
+            delegate: ContractAddress,
+            permissions: u64,
+            expiration: u64,
+            max_actions: u64
+        ) -> bool {
+            // Ensure the delegate address is valid
+            let x: ContractAddress = 0.try_into().unwrap();
+            assert(delegate != x, 'Invalid delegate address');
+
+            // Get the delegator (caller)
+            let delegator = get_caller_address();
+
+            // Create delegation info
+            let delegation_info = DelegationInfo {
+                delegator,
+                delegate,
+                permissions,
+                expiration,
+                max_actions,
+                action_count: 0,
+                active: true,
+            };
+
+            // Store the delegation
+            self.delegations.write((delegator, permissions), delegation_info);
+
+            // Increment nonce for tracking
+            let current_nonce = self.delegation_nonces.read(delegate);
+            self.delegation_nonces.write(delegate, current_nonce + 1);
+
+            // Track delegation history
+            let history_count = self.delegation_history.read((delegator, delegate));
+            self.delegation_history.write((delegator, delegate), history_count + 1);
+
+            // Emit delegation created event
+            self
+                .emit(
+                    Event::DelegationCreated(
+                        DelegationCreated {
+                            delegator, delegate, permissions, expiration, max_actions,
+                        }
+                    )
+                );
+
+            true
+        }
+
+        // Revokes an active delegation
+        fn revoke_delegation(
+            ref self: ContractState, delegate: ContractAddress, permissions: u64
+        ) -> bool {
+            // Get the delegator (caller)
+            let delegator = get_caller_address();
+
+            // Get the delegation info
+            let mut delegation_info = self.delegations.read((delegator, permissions));
+
+            // Ensure the delegation exists and is active
+            assert(delegation_info.active, 'Delegation not active');
+            assert(delegation_info.delegate == delegate, 'Delegate mismatch');
+
+            // Deactivate the delegation
+            delegation_info.active = false;
+            self.delegations.write((delegator, permissions), delegation_info);
+
+            // Emit delegation revoked event
+            self.emit(Event::DelegationRevoked(DelegationRevoked { delegator, delegate, }));
+
+            true
+        }
+
+        // Checks if a delegate has specific permissions from a delegator
+        fn is_delegated(
+            self: @ContractState,
+            delegator: ContractAddress,
+            delegate: ContractAddress,
+            permission: u64
+        ) -> bool {
+            let delegation_info = self.delegations.read((delegator, permission));
+
+            // Verify delegation exists and is active
+            if !delegation_info.active || delegation_info.delegate != delegate {
+                return false;
+            }
+
+            // Check if the delegation has expired
+            let current_time = get_block_timestamp();
+            if delegation_info.expiration != 0 && delegation_info.expiration < current_time {
+                return false;
+            }
+
+            // Check if action limit has been reached
+            if delegation_info.max_actions != 0
+                && delegation_info.action_count >= delegation_info.max_actions {
+                return false;
+            }
+
+            // Check if the requested permission is included in the granted permissions
+            return (delegation_info.permissions & permission) == permission;
+        }
+
+        // Uses a delegation to perform an action, updating usage count
+        fn use_delegation(
+            ref self: ContractState, delegator: ContractAddress, permission: u64
+        ) -> bool {
+            let caller = get_caller_address();
+
+            // Check if the caller has the required permission via delegation
+            assert(self.is_delegated(delegator, caller, permission), 'Permission denied');
+
+            // Get the delegation info
+            let mut delegation_info = self.delegations.read((delegator, permission));
+
+            // Increment action count
+            delegation_info.action_count += 1;
+            self.delegations.write((delegator, permission), delegation_info);
+
+            // Calculate remaining actions
+            let remaining_actions = if delegation_info.max_actions == 0 {
+                0 // Unlimited actions
+            } else {
+                delegation_info.max_actions - delegation_info.action_count
+            };
+
+            // Emit delegation used event
+            self
+                .emit(
+                    Event::DelegationUsed(
+                        DelegationUsed {
+                            delegator, delegate: caller, permission, remaining_actions,
+                        }
+                    )
+                );
+
+            // Check if the delegation has reached its action limit
+            if delegation_info.max_actions != 0
+                && delegation_info.action_count >= delegation_info.max_actions {
+                // Deactivate the delegation
+                delegation_info.active = false;
+                self.delegations.write((delegator, permission), delegation_info);
+
+                // Emit delegation expired event
+                self.emit(DelegationExpired { delegator, delegate: caller, });
+            }
+
+            true
+        }
+
+
+        // Get delegation information
+        fn get_delegation_info(
+            self: @ContractState, delegator: ContractAddress, permission: u64
+        ) -> DelegationInfo {
+            self.delegations.read((delegator, permission))
         }
     }
 }
