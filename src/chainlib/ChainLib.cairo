@@ -1,15 +1,24 @@
 #[starknet::contract]
 pub mod ChainLib {
+    use core::array::Array;
+    use core::array::ArrayTrait;
+    use core::option::OptionTrait;
+
     use starknet::storage::{
-        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
-        StoragePointerWriteAccess,
+        Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
+        StoragePointerWriteAccess, Vec, VecTrait,
     };
+
+
     use starknet::{
-        ContractAddress, get_block_timestamp, get_caller_address, contract_address_const
+        ContractAddress, get_block_timestamp, get_caller_address, contract_address_const,
     };
     use crate::interfaces::IChainLib::IChainLib;
 
-    use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions, permission_flags};
+    use crate::base::types::{
+        TokenBoundAccount, User, Role, Rank, Permissions, permission_flags, AccessRule, AccessType,
+        VerificationRequirement, VerificationType,
+    };
 
 
     #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
@@ -27,7 +36,7 @@ pub mod ChainLib {
         #[default]
         Education,
         Literature,
-        Art
+        Art,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -37,7 +46,7 @@ pub mod ChainLib {
         pub description: felt252,
         pub content_type: ContentType,
         pub creator: ContractAddress,
-        pub category: Category
+        pub category: Category,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -49,7 +58,7 @@ pub mod ChainLib {
         pub start_date: u64,
         pub end_date: u64,
         pub is_active: bool,
-        pub last_payment_date: u64
+        pub last_payment_date: u64,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -59,7 +68,7 @@ pub mod ChainLib {
         pub amount: u256,
         pub timestamp: u64,
         pub is_verified: bool,
-        pub is_refunded: bool
+        pub is_refunded: bool,
     }
 
     #[storage]
@@ -90,8 +99,19 @@ pub mod ChainLib {
         user_by_address: Map<ContractAddress, User>,
         // Permission system storage
         operator_permissions: Map::<
-            (u256, ContractAddress), Permissions
+            (u256, ContractAddress), Permissions,
         >, // Maps account_id and operator to permissions
+        content_access_rules_count: Map<felt252, u32>,
+        content_access_rules: Map<(felt252, u32), AccessRule>,
+        user_content_permissions: Map<(ContractAddress, felt252), Permissions>,
+        content_verification_requirements_count: Map<felt252, u32>,
+        content_verification_requirements: Map<(felt252, u32), VerificationRequirement>,
+        user_verifications: Map<(ContractAddress, VerificationType), bool>,
+        user_identity_verifications: Map<ContractAddress, bool>,
+        user_payment_verifications: Map<ContractAddress, bool>,
+        user_reputation_verifications: Map<ContractAddress, bool>,
+        user_ownership_verifications: Map<ContractAddress, bool>,
+        user_custom_verifications: Map<ContractAddress, bool>,
     }
 
 
@@ -115,6 +135,8 @@ pub mod ChainLib {
         PermissionGranted: PermissionGranted,
         PermissionRevoked: PermissionRevoked,
         PermissionModified: PermissionModified,
+        UserVerificationStatusChanged: UserVerificationStatusChanged,
+        ContentPermissionsGranted: ContentPermissionsGranted,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -184,13 +206,32 @@ pub mod ChainLib {
     #[derive(Drop, starknet::Event)]
     pub struct ContentRegistered {
         pub content_id: felt252,
-        pub creator: ContractAddress
+        pub creator: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct UserVerificationStatusChanged {
+        #[key]
+        pub user: ContractAddress,
+        pub verification_type: VerificationType,
+        pub is_verified: bool,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ContentPermissionsGranted {
+        #[key]
+        pub content_id: felt252,
+        #[key]
+        pub user: ContractAddress,
+        pub permissions: Permissions,
+        pub timestamp: u64,
     }
 
     #[abi(embed_v0)]
     impl ChainLibNetImpl of IChainLib<ContractState> {
         fn create_token_account(
-            ref self: ContractState, user_name: felt252, init_param1: felt252, init_param2: felt252
+            ref self: ContractState, user_name: felt252, init_param1: felt252, init_param2: felt252,
         ) -> u256 {
             // Ensure that the username is not empty.
             assert!(user_name != 0, "User name cannot be empty");
@@ -217,7 +258,7 @@ pub mod ChainLib {
                 init_param2: init_param2,
                 created_at: get_block_timestamp(), // Capture the creation timestamp.
                 updated_at: get_block_timestamp(), // Set initial updated timestamp.
-                owner_permissions: owner_permissions, // Set owner permissions
+                owner_permissions: owner_permissions // Set owner permissions
             };
 
             // Store the new account in the accounts mapping
@@ -241,21 +282,20 @@ pub mod ChainLib {
             account_id
         }
 
-
         fn get_token_bound_account(ref self: ContractState, id: u256) -> TokenBoundAccount {
             let token_bound_account = self.accounts.read(id);
             token_bound_account
         }
+
         fn get_token_bound_account_by_owner(
-            ref self: ContractState, address: ContractAddress
+            ref self: ContractState, address: ContractAddress,
         ) -> TokenBoundAccount {
             let token_bound_account = self.accountsaddr.read(address);
             token_bound_account
         }
 
-
         fn register_user(
-            ref self: ContractState, username: felt252, role: Role, rank: Rank, metadata: felt252
+            ref self: ContractState, username: felt252, role: Role, rank: Rank, metadata: felt252,
         ) -> u256 {
             // Ensure that the username is not empty.
             assert!(username != 0, "User name cannot be empty");
@@ -271,7 +311,7 @@ pub mod ChainLib {
                 role: role,
                 rank: rank,
                 verified: false, // Default verification status is false.
-                metadata: metadata
+                metadata: metadata,
             };
 
             // Store the new user in the users mapping.
@@ -322,7 +362,7 @@ pub mod ChainLib {
         // Permission system implementation
 
         fn get_permissions(
-            self: @ContractState, account_id: u256, operator: ContractAddress
+            self: @ContractState, account_id: u256, operator: ContractAddress,
         ) -> Permissions {
             let account = self.accounts.read(account_id);
 
@@ -339,7 +379,7 @@ pub mod ChainLib {
             ref self: ContractState,
             account_id: u256,
             operator: ContractAddress,
-            permissions: Permissions
+            permissions: Permissions,
         ) -> bool {
             let caller = get_caller_address();
             let account = self.accounts.read(account_id);
@@ -349,7 +389,7 @@ pub mod ChainLib {
             assert(
                 account.address == caller
                     || (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0,
-                'No permission'
+                'No permission',
             );
 
             // Store the operator's permissions
@@ -362,7 +402,7 @@ pub mod ChainLib {
         }
 
         fn revoke_operator(
-            ref self: ContractState, account_id: u256, operator: ContractAddress
+            ref self: ContractState, account_id: u256, operator: ContractAddress,
         ) -> bool {
             let caller = get_caller_address();
             let account = self.accounts.read(account_id);
@@ -372,7 +412,7 @@ pub mod ChainLib {
             assert(
                 account.address == caller
                     || (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0,
-                'No permission'
+                'No permission',
             );
 
             // Set permissions to NONE
@@ -386,14 +426,14 @@ pub mod ChainLib {
         }
 
         fn has_permission(
-            self: @ContractState, account_id: u256, operator: ContractAddress, permission: u64
+            self: @ContractState, account_id: u256, operator: ContractAddress, permission: u64,
         ) -> bool {
             let permissions = self.get_permissions(account_id, operator);
             (permissions.value & permission) != 0
         }
 
         fn modify_account_permissions(
-            ref self: ContractState, account_id: u256, permissions: Permissions
+            ref self: ContractState, account_id: u256, permissions: Permissions,
         ) -> bool {
             let caller = get_caller_address();
             let mut account = self.accounts.read(account_id);
@@ -425,7 +465,7 @@ pub mod ChainLib {
             title: felt252,
             description: felt252,
             content_type: ContentType,
-            category: Category
+            category: Category,
         ) -> felt252 {
             assert!(title != 0, "Title cannot be empty");
             assert!(description != 0, "Description cannot be empty");
@@ -443,7 +483,7 @@ pub mod ChainLib {
                 description: description,
                 content_type: content_type,
                 creator: creator,
-                category: category
+                category: category,
             };
 
             self.content.write(content_id, content_metadata);
@@ -468,7 +508,7 @@ pub mod ChainLib {
         /// @param subscriber The address of the subscriber
         /// @return bool Returns true if the payment is processed successfully
         fn process_initial_payment(
-            ref self: ContractState, amount: u256, subscriber: ContractAddress
+            ref self: ContractState, amount: u256, subscriber: ContractAddress,
         ) -> bool {
             // Get the caller's address - this is who is initiating the subscription
             let caller = get_caller_address();
@@ -491,7 +531,7 @@ pub mod ChainLib {
                 start_date: current_time,
                 end_date: current_time + subscription_period,
                 is_active: true,
-                last_payment_date: current_time
+                last_payment_date: current_time,
             };
 
             // Store the subscription
@@ -505,7 +545,7 @@ pub mod ChainLib {
                 amount: amount,
                 timestamp: current_time,
                 is_verified: true, // Initial payment is auto-verified
-                is_refunded: false
+                is_refunded: false,
             };
 
             self.payments.write(payment_id, new_payment);
@@ -543,8 +583,8 @@ pub mod ChainLib {
                         subscription_id: subscription_id,
                         subscriber: subscriber,
                         amount: amount,
-                        timestamp: current_time
-                    }
+                        timestamp: current_time,
+                    },
                 );
 
             true
@@ -587,7 +627,7 @@ pub mod ChainLib {
                 amount: subscription.amount,
                 timestamp: current_time,
                 is_verified: true, // Auto-verify for simplicity
-                is_refunded: false
+                is_refunded: false,
             };
 
             self.payments.write(payment_id, new_payment);
@@ -614,8 +654,8 @@ pub mod ChainLib {
                         subscription_id: subscription_id,
                         subscriber: subscription.subscriber,
                         amount: subscription.amount,
-                        timestamp: current_time
-                    }
+                        timestamp: current_time,
+                    },
                 );
 
             true
@@ -649,8 +689,8 @@ pub mod ChainLib {
                     PaymentVerified {
                         payment_id: payment_id,
                         subscription_id: payment.subscription_id,
-                        timestamp: get_block_timestamp()
-                    }
+                        timestamp: get_block_timestamp(),
+                    },
                 );
 
             true
@@ -701,11 +741,255 @@ pub mod ChainLib {
                         payment_id: payment_id,
                         subscription_id: subscription_id,
                         amount: payment.amount,
-                        timestamp: get_block_timestamp()
-                    }
+                        timestamp: get_block_timestamp(),
+                    },
                 );
 
             true
+        }
+
+
+        fn set_verification_requirements(
+            ref self: ContractState,
+            content_id: felt252,
+            requirements: Array<VerificationRequirement>,
+        ) -> bool {
+            let caller = get_caller_address();
+            let content = self.content.read(content_id);
+
+            assert(content.creator == caller || self.admin.read() == caller, 'Not authorized');
+
+            // Clear existing requirements
+            let current_count = self.content_verification_requirements_count.read(content_id);
+            let mut i: u32 = 0;
+            while i < current_count {
+                let default_req = VerificationRequirement {
+                    requirement_type: VerificationType::Identity,
+                    valid_until: 0_u64,
+                    threshold: 0_u64,
+                };
+                self.content_verification_requirements.write((content_id, i), default_req);
+                i += 1;
+            };
+
+            // Store new requirements
+            let new_count = requirements.len();
+            i = 0;
+            while i < new_count {
+                let req = requirements.at(i);
+                self.content_verification_requirements.write((content_id, i), *req);
+                i += 1;
+            };
+
+            self.content_verification_requirements_count.write(content_id, new_count);
+            true
+        }
+
+
+        fn get_verification_requirements(
+            self: @ContractState, content_id: felt252,
+        ) -> Array<VerificationRequirement> {
+            let count = self.content_verification_requirements_count.read(content_id);
+            let mut requirements = ArrayTrait::new();
+            let mut i: u32 = 0;
+
+            while i < count {
+                let req = self.content_verification_requirements.read((content_id, i));
+                requirements.append(req);
+                i += 1;
+            };
+
+            requirements
+        }
+
+
+        fn set_content_access_rules(
+            ref self: ContractState, content_id: felt252, rules: Array<AccessRule>,
+        ) -> bool {
+            let caller = get_caller_address();
+            let content = self.content.read(content_id);
+
+            assert(content.creator == caller || self.admin.read() == caller, 'Not authorized');
+
+            // Clear existing rules
+            let current_count = self.content_access_rules_count.read(content_id);
+            let mut i: u32 = 0;
+            while i < current_count {
+                // Create an empty/default AccessRule manually
+                let empty_rule = AccessRule {
+                    access_type: AccessType::Admin,
+                    permission_level: 0,
+                    conditions: Option::None,
+                    expires_at: 0,
+                };
+                self.content_access_rules.write((content_id, i), empty_rule);
+                i += 1;
+            };
+
+            // Store new rules
+            let new_count = rules.len();
+            i = 0;
+            while i < new_count {
+                let rule = *rules.at(i);
+                self.content_access_rules.write((content_id, i), rule);
+                i += 1;
+            };
+
+            self.content_access_rules_count.write(content_id, new_count);
+            true
+        }
+
+
+        fn get_content_access_rules(
+            self: @ContractState, content_id: felt252,
+        ) -> Array<AccessRule> {
+            let count = self.content_access_rules_count.read(content_id);
+            let mut rules = ArrayTrait::new();
+            let mut i: u32 = 0;
+
+            while i < count {
+                let rule = self.content_access_rules.read((content_id, i));
+                rules.append(rule);
+                i += 1;
+            };
+
+            rules
+        }
+
+        fn add_content_access_rule(
+            ref self: ContractState, content_id: felt252, rule: AccessRule,
+        ) -> bool {
+            let caller = get_caller_address();
+            let content = self.content.read(content_id);
+
+            assert(content.creator == caller || self.admin.read() == caller, 'Not authorized');
+
+            let count = self.content_access_rules_count.read(content_id);
+            self.content_access_rules.write((content_id, count), rule);
+            self.content_access_rules_count.write(content_id, count + 1);
+            true
+        }
+
+        fn check_verification_requirements(
+            self: @ContractState, user: ContractAddress, content_id: felt252,
+        ) -> bool {
+            let requirements = self.get_verification_requirements(content_id);
+            let current_time = get_block_timestamp();
+            let mut status = true;
+
+            let mut i = 0;
+            let len = requirements.len();
+            while i < len {
+                let req = *requirements.at(i);
+
+                // Skip expired requirements
+                if req.valid_until != 0 && req.valid_until < current_time {
+                    i += 1;
+                    continue;
+                };
+
+                // Check verification status based on type
+                let is_verified = match req.requirement_type {
+                    VerificationType::Identity => self.user_identity_verifications.read(user),
+                    VerificationType::Payment => self.user_payment_verifications.read(user),
+                    VerificationType::Reputation => self.user_reputation_verifications.read(user),
+                    VerificationType::Ownership => self.user_ownership_verifications.read(user),
+                    VerificationType::Custom => self.user_custom_verifications.read(user),
+                };
+
+                if !is_verified {
+                    status = false;
+                    break;
+                };
+                i += 1;
+            };
+            status
+        }
+
+        fn set_user_verification(
+            ref self: ContractState,
+            user: ContractAddress,
+            verification_type: VerificationType,
+            is_verified: bool,
+        ) -> bool {
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can verify users');
+
+            // Update the appropriate verification map
+            match verification_type {
+                VerificationType::Identity => {
+                    self.user_identity_verifications.write(user, is_verified);
+                },
+                VerificationType::Payment => {
+                    self.user_payment_verifications.write(user, is_verified);
+                },
+                VerificationType::Reputation => {
+                    self.user_reputation_verifications.write(user, is_verified);
+                },
+                VerificationType::Ownership => {
+                    self.user_ownership_verifications.write(user, is_verified);
+                },
+                VerificationType::Custom => {
+                    self.user_custom_verifications.write(user, is_verified);
+                },
+            };
+
+            self
+                .emit(
+                    UserVerificationStatusChanged {
+                        user, verification_type, is_verified, timestamp: get_block_timestamp(),
+                    },
+                );
+            true
+        }
+
+        fn grant_content_permissions(
+            ref self: ContractState,
+            content_id: felt252,
+            user: ContractAddress,
+            permissions: Permissions,
+        ) -> bool {
+            let caller = get_caller_address();
+            let content = self.content.read(content_id);
+
+            // Verify caller has permission to grant permissions
+            assert(
+                content.creator == caller
+                    || self.admin.read() == caller
+                    || self
+                        .has_content_permission(
+                            content_id, caller, permission_flags::MANAGE_PERMISSIONS,
+                        ),
+                'Not authorized for permissions',
+            );
+
+            // Grant the permissions
+            self.user_content_permissions.write((user, content_id), permissions);
+
+            // Emit event
+            self
+                .emit(
+                    ContentPermissionsGranted {
+                        content_id, user, permissions, timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn has_content_permission(
+            self: @ContractState, content_id: felt252, user: ContractAddress, permission: u64,
+        ) -> bool {
+            let content = self.content.read(content_id);
+
+            // Creator or admin always allowed
+            if user == content.creator || user == self.admin.read() {
+                return true;
+            }
+
+            // Check user permissions
+            let user_permissions = self.user_content_permissions.read((user, content_id));
+            (user_permissions.value & permission) != 0
         }
     }
 }
