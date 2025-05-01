@@ -4,15 +4,14 @@ use crate::base::types::{
     TokenBoundAccount, User, Role, Rank, Permissions, AccessRule, VerificationRequirement,
     VerificationType,
 };
-use crate::chainlib::ChainLib::ChainLib::{Category, ContentType, ContentMetadata};
+use crate::chainlib::ChainLib::ChainLib::{Category, ContentType, ContentMetadata, DelegationInfo};
 
 #[starknet::interface]
 pub trait IChainLib<TContractState> {
-    // Account Management
+    // Existing interface functions
     fn create_token_account(
         ref self: TContractState, user_name: felt252, init_param1: felt252, init_param2: felt252,
     ) -> u256;
-
     fn get_token_bound_account(ref self: TContractState, id: u256) -> TokenBoundAccount;
 
     fn get_token_bound_account_by_owner(
@@ -36,22 +35,18 @@ pub trait IChainLib<TContractState> {
     fn get_permissions(
         self: @TContractState, account_id: u256, operator: ContractAddress,
     ) -> Permissions;
-
     fn set_operator_permissions(
         ref self: TContractState,
         account_id: u256,
         operator: ContractAddress,
         permissions: Permissions,
     ) -> bool;
-
     fn revoke_operator(
         ref self: TContractState, account_id: u256, operator: ContractAddress,
     ) -> bool;
-
     fn has_permission(
         self: @TContractState, account_id: u256, operator: ContractAddress, permission: u64,
     ) -> bool;
-
     fn modify_account_permissions(
         ref self: TContractState, account_id: u256, permissions: Permissions,
     ) -> bool;
@@ -64,7 +59,6 @@ pub trait IChainLib<TContractState> {
         content_type: ContentType,
         category: Category,
     ) -> felt252;
-
     fn get_content(ref self: TContractState, content_id: felt252) -> ContentMetadata;
 
     // Payment System
@@ -118,4 +112,41 @@ pub trait IChainLib<TContractState> {
     fn has_content_permission(
         self: @TContractState, content_id: felt252, user: ContractAddress, permission: u64,
     ) -> bool;
+
+    // NEW - Account Delegation Interface Functions
+    fn create_delegation(
+        ref self: TContractState,
+        delegate: ContractAddress,
+        permissions: u64,
+        expiration: u64,
+        max_actions: u64,
+    ) -> bool;
+
+    fn revoke_delegation(
+        ref self: TContractState, delegate: ContractAddress, permissions: u64,
+    ) -> bool;
+
+    fn is_delegated(
+        self: @TContractState,
+        delegator: ContractAddress,
+        delegate: ContractAddress,
+        permission: u64,
+    ) -> bool;
+
+    fn use_delegation(
+        ref self: TContractState, delegator: ContractAddress, permission: u64,
+    ) -> bool;
+
+    // fn execute_as_delegate(
+    //     ref self: TContractState,
+    //     delegator: ContractAddress,
+    //     permission: u64,
+    //     to: ContractAddress,
+    //     selector: felt252,
+    //     calldata: Array<felt252>
+    // ) -> Array<felt252>;
+
+    fn get_delegation_info(
+        self: @TContractState, delegator: ContractAddress, permission: u64,
+    ) -> DelegationInfo;
 }
