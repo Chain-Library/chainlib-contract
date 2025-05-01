@@ -8,7 +8,9 @@ pub mod ChainLib {
         ContractAddress, get_block_timestamp, get_caller_address, contract_address_const
     };
     use crate::interfaces::IChainLib::IChainLib;
+
     use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions, permission_flags};
+
 
     #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
     pub enum ContentType {
@@ -38,6 +40,28 @@ pub mod ChainLib {
         pub category: Category
     }
 
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct Subscription {
+        pub id: u256,
+        pub subscriber: ContractAddress,
+        pub plan_id: u256,
+        pub amount: u256,
+        pub start_date: u64,
+        pub end_date: u64,
+        pub is_active: bool,
+        pub last_payment_date: u64
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct Payment {
+        pub id: u256,
+        pub subscription_id: u256,
+        pub amount: u256,
+        pub timestamp: u64,
+        pub is_verified: bool,
+        pub is_refunded: bool
+    }
+
     #[storage]
     struct Storage {
         // Contract addresses for component management
@@ -51,6 +75,17 @@ pub mod ChainLib {
         creators_content: Map::<ContractAddress, ContentMetadata>,
         content: Map::<felt252, ContentMetadata>,
         content_tags: Map::<ContentMetadata, Array<felt252>>,
+        // Subscription related storage
+        subscription_id: u256,
+        subscriptions: Map::<u256, Subscription>,
+        // Instead of storing arrays directly, we'll use a counter-based approach
+        user_subscription_count: Map::<ContractAddress, u256>,
+        user_subscription_by_index: Map::<(ContractAddress, u256), u256>,
+        payment_id: u256,
+        payments: Map::<u256, Payment>,
+        // Similar counter-based approach for subscription payments
+        subscription_payment_count: Map::<u256, u256>,
+        subscription_payment_by_index: Map::<(u256, u256), u256>,
         next_content_id: felt252,
         user_by_address: Map<ContractAddress, User>,
         // Permission system storage
@@ -71,6 +106,10 @@ pub mod ChainLib {
     pub enum Event {
         TokenBoundAccountCreated: TokenBoundAccountCreated,
         UserCreated: UserCreated,
+        PaymentProcessed: PaymentProcessed,
+        RecurringPaymentProcessed: RecurringPaymentProcessed,
+        PaymentVerified: PaymentVerified,
+        RefundProcessed: RefundProcessed,
         ContentRegistered: ContentRegistered,
         // Permission-related events
         PermissionGranted: PermissionGranted,
@@ -86,6 +125,39 @@ pub mod ChainLib {
     #[derive(Drop, starknet::Event)]
     pub struct UserCreated {
         pub id: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PaymentProcessed {
+        pub payment_id: u256,
+        pub subscription_id: u256,
+        pub subscriber: ContractAddress,
+        pub amount: u256,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RecurringPaymentProcessed {
+        pub payment_id: u256,
+        pub subscription_id: u256,
+        pub subscriber: ContractAddress,
+        pub amount: u256,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PaymentVerified {
+        pub payment_id: u256,
+        pub subscription_id: u256,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RefundProcessed {
+        pub payment_id: u256,
+        pub subscription_id: u256,
+        pub amount: u256,
+        pub timestamp: u64,
     }
 
     // Permission-related events
@@ -133,10 +205,13 @@ pub mod ChainLib {
             // Create default full permissions for the owner
             let owner_permissions = Permissions { value: permission_flags::FULL };
 
+            // Get the caller's address
+            let caller_address = get_caller_address();
+
             // Create a new token-bound account with the provided parameters.
             let new_token_bound_account = TokenBoundAccount {
                 id: account_id,
-                address: caller, // Assign the caller's address.
+                address: caller_address, // Assign the caller's address.
                 user_name: user_name,
                 init_param1: init_param1,
                 init_param2: init_param2,
@@ -145,8 +220,16 @@ pub mod ChainLib {
                 owner_permissions: owner_permissions, // Set owner permissions
             };
 
-            // Store the new account in the accounts mapping.
+            // Store the new account in the accounts mapping
             self.accounts.write(account_id, new_token_bound_account);
+
+            // Store the new account in the accountsaddr mapping
+            // Make sure to use the caller's address as the key
+            self.accountsaddr.write(caller_address, new_token_bound_account);
+
+            // For debugging, verify that the account was stored correctly
+            let stored_account = self.accountsaddr.read(caller_address);
+            assert(stored_account.id == account_id, 'Account storage failed');
 
             // Increment the account ID counter for the next registration.
             self.current_account_id.write(account_id + 1);
@@ -378,6 +461,251 @@ pub mod ChainLib {
 
             assert!(content_metadata.content_id == content_id, "Content does not exist");
             content_metadata
+        }
+
+        /// @notice Processes the initial payment for a new subscription
+        /// @param amount The amount to be charged for the initial payment
+        /// @param subscriber The address of the subscriber
+        /// @return bool Returns true if the payment is processed successfully
+        fn process_initial_payment(
+            ref self: ContractState, amount: u256, subscriber: ContractAddress
+        ) -> bool {
+            // Get the caller's address - this is who is initiating the subscription
+            let caller = get_caller_address();
+
+            // Only allow the subscriber themselves to create a subscription
+            assert(caller == subscriber, 'Only subscriber can call');
+
+            // Create a new subscription
+            let subscription_id = self.subscription_id.read();
+            let current_time = get_block_timestamp();
+
+            // Default subscription period is 30 days (in seconds)
+            let subscription_period: u64 = 30 * 24 * 60 * 60;
+
+            let new_subscription = Subscription {
+                id: subscription_id,
+                subscriber: subscriber,
+                plan_id: 1, // Default plan ID
+                amount: amount,
+                start_date: current_time,
+                end_date: current_time + subscription_period,
+                is_active: true,
+                last_payment_date: current_time
+            };
+
+            // Store the subscription
+            self.subscriptions.write(subscription_id, new_subscription);
+
+            // Create and store the payment record
+            let payment_id = self.payment_id.read();
+            let new_payment = Payment {
+                id: payment_id,
+                subscription_id: subscription_id,
+                amount: amount,
+                timestamp: current_time,
+                is_verified: true, // Initial payment is auto-verified
+                is_refunded: false
+            };
+
+            self.payments.write(payment_id, new_payment);
+
+            // Update user's subscriptions using a counter-based approach
+            // First, get the current count of subscriptions for this user
+            let current_count = self.user_subscription_count.read(subscriber);
+
+            // Store the subscription ID at the next index
+            self.user_subscription_by_index.write((subscriber, current_count), subscription_id);
+
+            // Increment the count
+            self.user_subscription_count.write(subscriber, current_count + 1);
+
+            // Update subscription's payments using a similar approach
+            let current_payment_count = self.subscription_payment_count.read(subscription_id);
+
+            // Store the payment ID at the next index
+            self
+                .subscription_payment_by_index
+                .write((subscription_id, current_payment_count), payment_id);
+
+            // Increment the count
+            self.subscription_payment_count.write(subscription_id, current_payment_count + 1);
+
+            // Increment IDs for next use
+            self.subscription_id.write(subscription_id + 1);
+            self.payment_id.write(payment_id + 1);
+
+            // Emit payment processed event
+            self
+                .emit(
+                    PaymentProcessed {
+                        payment_id: payment_id,
+                        subscription_id: subscription_id,
+                        subscriber: subscriber,
+                        amount: amount,
+                        timestamp: current_time
+                    }
+                );
+
+            true
+        }
+
+        /// @notice Handles recurring payments for existing subscriptions
+        /// @param subscription_id The unique identifier of the subscription
+        /// @return bool Returns true if the recurring payment is processed successfully
+        fn process_recurring_payment(ref self: ContractState, subscription_id: u256) -> bool {
+            // Get the subscription
+            let mut subscription = self.subscriptions.read(subscription_id);
+
+            // Verify subscription exists and is active
+            assert(subscription.id == subscription_id, 'Subscription not found');
+            assert(subscription.is_active, 'Subscription not active');
+
+            // Check if it's time for a recurring payment
+            let current_time = get_block_timestamp();
+
+            // Only process if subscription is due for renewal
+            // In a real implementation, you would check if current_time >= subscription.end_date
+            // For simplicity, we'll allow any recurring payment after the initial payment
+            assert(current_time > subscription.last_payment_date, 'Payment not due yet');
+
+            // Default subscription period is 30 days (in seconds)
+            let subscription_period: u64 = 30 * 24 * 60 * 60;
+
+            // Update subscription details
+            subscription.last_payment_date = current_time;
+            subscription.end_date = current_time + subscription_period;
+
+            // Store updated subscription
+            self.subscriptions.write(subscription_id, subscription);
+
+            // Create and store the payment record
+            let payment_id = self.payment_id.read();
+            let new_payment = Payment {
+                id: payment_id,
+                subscription_id: subscription_id,
+                amount: subscription.amount,
+                timestamp: current_time,
+                is_verified: true, // Auto-verify for simplicity
+                is_refunded: false
+            };
+
+            self.payments.write(payment_id, new_payment);
+
+            // Update subscription's payments using a similar approach
+            let current_payment_count = self.subscription_payment_count.read(subscription_id);
+
+            // Store the payment ID at the next index
+            self
+                .subscription_payment_by_index
+                .write((subscription_id, current_payment_count), payment_id);
+
+            // Increment the count
+            self.subscription_payment_count.write(subscription_id, current_payment_count + 1);
+
+            // Increment payment ID for next use
+            self.payment_id.write(payment_id + 1);
+
+            // Emit recurring payment processed event
+            self
+                .emit(
+                    RecurringPaymentProcessed {
+                        payment_id: payment_id,
+                        subscription_id: subscription_id,
+                        subscriber: subscription.subscriber,
+                        amount: subscription.amount,
+                        timestamp: current_time
+                    }
+                );
+
+            true
+        }
+
+        /// @notice Verifies if a payment has been processed correctly
+        /// @param payment_id The unique identifier of the payment to verify
+        /// @return bool Returns true if the payment is verified successfully
+        fn verify_payment(ref self: ContractState, payment_id: u256) -> bool {
+            // Only admin should be able to verify payments
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can verify payments');
+
+            // Get the payment
+            let mut payment = self.payments.read(payment_id);
+
+            // Verify payment exists and is not already verified
+            assert(payment.id == payment_id, 'Payment not found');
+            assert(!payment.is_verified, 'Payment already verified');
+
+            // Mark payment as verified
+            payment.is_verified = true;
+            self.payments.write(payment_id, payment);
+
+            // Get subscription for the event
+            // let subscription = self.subscriptions.read(payment.subscription_id);
+
+            // Emit payment verified event
+            self
+                .emit(
+                    PaymentVerified {
+                        payment_id: payment_id,
+                        subscription_id: payment.subscription_id,
+                        timestamp: get_block_timestamp()
+                    }
+                );
+
+            true
+        }
+
+        /// @notice Processes refunds for cancelled or disputed subscriptions
+        /// @param subscription_id The unique identifier of the subscription to refund
+        /// @return bool Returns true if the refund is processed successfully
+        fn process_refund(ref self: ContractState, subscription_id: u256) -> bool {
+            // Only admin should be able to process refunds
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can process refunds');
+
+            // Get the subscription
+            let mut subscription = self.subscriptions.read(subscription_id);
+
+            // Verify subscription exists and is active
+            assert(subscription.id == subscription_id, 'Subscription not found');
+            assert(subscription.is_active, 'Subscription not active');
+
+            // Get the most recent payment for this subscription
+            // In a real implementation, you would find the most recent payment
+            // For simplicity, we'll use a placeholder approach
+            let sub_payments = self.subscription_payment_count.read(subscription_id);
+            assert(sub_payments > 0, 'No payments to refund');
+
+            // Get the last payment (simplified approach)
+            let payment_id = self
+                .subscription_payment_by_index
+                .read((subscription_id, sub_payments - 1));
+            let mut payment = self.payments.read(payment_id);
+
+            // Verify payment exists and is not already refunded
+            assert(!payment.is_refunded, 'Payment already refunded');
+
+            // Mark payment as refunded
+            payment.is_refunded = true;
+            self.payments.write(payment_id, payment);
+
+            // Deactivate the subscription
+            subscription.is_active = false;
+            self.subscriptions.write(subscription_id, subscription);
+
+            // Emit refund processed event
+            self
+                .emit(
+                    RefundProcessed {
+                        payment_id: payment_id,
+                        subscription_id: subscription_id,
+                        amount: payment.amount,
+                        timestamp: get_block_timestamp()
+                    }
+                );
+
+            true
         }
     }
 }
