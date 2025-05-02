@@ -1399,18 +1399,6 @@ pub mod ChainLib {
 
             // Check cache first
             let cached_access = self.access_cache.read(cache_key);
-            if cached_access.timestamp != 0 && current_time < cached_access.expiry {
-                // Cache hit, return cached result
-                self
-                    .emit(
-                        AccessVerified {
-                            user_id: user_id,
-                            content_id: content_id,
-                            has_access: cached_access.has_access,
-                        },
-                    );
-                return cached_access.has_access;
-            }
 
             // Cache miss or expired, perform full verification
             let user = self.users.read(user_id);

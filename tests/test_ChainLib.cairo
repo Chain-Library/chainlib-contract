@@ -4,7 +4,7 @@ use chain_lib::chainlib::ChainLib;
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, start_cheat_caller_address,
-    cheat_caller_address, declare, stop_cheat_caller_address
+    cheat_caller_address, declare, stop_cheat_caller_address,
 };
 use starknet::{ContractAddress};
 use starknet::class_hash::ClassHash;
@@ -223,7 +223,7 @@ fn test_is_in_blacklist() {
     let role: Role = Role::WRITER;
     let rank: Rank = Rank::BEGINNER;
     let metadata: felt252 = 'john is a boy';
-    
+
     let title: felt252 = 'My Content';
     let description: felt252 = 'This is a test content';
     let content_type: ContentType = ContentType::Text;
@@ -283,8 +283,70 @@ fn test_has_active_subscription() {
 
     dispatcher.create_subscription(account_id, 500);
 
-
     start_cheat_caller_address(contract_address, admin);
     let check_sub = dispatcher.has_active_subscription(account_id);
     assert(check_sub, 'should have an active sub');
+}
+
+#[test]
+fn test_set_cache_ttl() {
+    let (contract_address, admin) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    start_cheat_caller_address(contract_address, admin);
+
+    let set_cache_ttl = dispatcher.set_cache_ttl(1000);
+    assert(set_cache_ttl, 'Cache TTL should be set');
+}
+
+#[test]
+#[should_panic(expected: "Only WRITER can post content")]
+fn test_verify_access() {
+    let (contract_address, admin) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::WRITER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    let title: felt252 = 'My Content';
+    let description: felt252 = 'This is a test content';
+    let content_type: ContentType = ContentType::Text;
+    let category: Category = Category::Education;
+
+    let content_id = dispatcher.register_content(title, description, content_type, category);
+
+    // Call register
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    start_cheat_caller_address(contract_address, admin);
+    dispatcher.verify_access(account_id, content_id);
+}
+
+#[test]
+#[should_panic(expected: "Only WRITER can post content")]
+fn test_determine_access() {
+    let (contract_address, admin) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::WRITER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    let title: felt252 = 'My Content';
+    let description: felt252 = 'This is a test content';
+    let content_type: ContentType = ContentType::Text;
+    let category: Category = Category::Education;
+
+    let content_id = dispatcher.register_content(title, description, content_type, category);
+
+    // Call register
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    start_cheat_caller_address(contract_address, admin);
+    dispatcher.verify_access(account_id, content_id);
 }
