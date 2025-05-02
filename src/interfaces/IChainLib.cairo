@@ -1,6 +1,6 @@
 use starknet::ContractAddress;
 use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions};
-use crate::chainlib::ChainLib::ChainLib::{Category, ContentType, ContentMetadata, DelegationInfo};
+use crate::chainlib::ChainLib::ChainLib::{Category, ContentType, ContentMetadata, DelegationInfo, ContentUpdate};
 
 
 #[starknet::interface]
@@ -107,4 +107,23 @@ pub trait IChainLib<TContractState> {
     fn get_delegation_info(
         self: @TContractState, delegator: ContractAddress, permission: u64
     ) -> DelegationInfo;
+
+    fn update_content(
+        ref self: TContractState,
+        content_id: felt252,
+        new_title: Option<felt252>,
+        new_description: Option<felt252>,
+        new_content_type: Option<ContentType>,
+        new_category: Option<Category>
+    ) -> bool;
+
+    fn get_content_update_history(
+        self: @TContractState,
+        content_id: felt252
+    ) -> Array<ContentUpdate>;
+
+    fn get_content_update_count(
+        self: @TContractState,
+        content_id: felt252
+    ) -> u64;
 }

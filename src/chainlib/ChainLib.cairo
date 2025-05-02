@@ -85,6 +85,17 @@ pub mod ChainLib {
         pub is_refunded: bool
     }
 
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct ContentUpdate {
+        pub content_id: felt252,
+        pub updater: ContractAddress,
+        pub timestamp: u64,
+        pub old_title: felt252,
+        pub old_description: felt252,
+        pub old_content_type: ContentType,
+        pub old_category: Category
+    }
+
     #[storage]
     struct Storage {
         // Contract addresses for component management
@@ -123,6 +134,8 @@ pub mod ChainLib {
         delegation_history: Map::<
             (ContractAddress, ContractAddress), u64
         >, // Track history between delegator and delegate
+        content_updates: Map<felt252, Array<ContentUpdate>>,
+        content_update_count: Map<felt252, u64>,
     }
 
 
@@ -151,6 +164,7 @@ pub mod ChainLib {
         DelegationRevoked: DelegationRevoked,
         DelegationUsed: DelegationUsed,
         DelegationExpired: DelegationExpired,
+        ContentUpdated: ContentUpdated,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -250,6 +264,21 @@ pub mod ChainLib {
     pub struct ContentRegistered {
         pub content_id: felt252,
         pub creator: ContractAddress
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ContentUpdated {
+        pub content_id: felt252,
+        pub updater: ContractAddress,
+        pub timestamp: u64,
+        pub old_title: felt252,
+        pub new_title: felt252,
+        pub old_description: felt252,
+        pub new_description: felt252,
+        pub old_content_type: ContentType,
+        pub new_content_type: ContentType,
+        pub old_category: Category,
+        pub new_category: Category
     }
 
     #[abi(embed_v0)]
@@ -936,6 +965,96 @@ pub mod ChainLib {
             self: @ContractState, delegator: ContractAddress, permission: u64
         ) -> DelegationInfo {
             self.delegations.read((delegator, permission))
+        }
+
+        fn update_content(
+            ref self: ContractState,
+            content_id: felt252,
+            new_title: Option<felt252>,
+            new_description: Option<felt252>,
+            new_content_type: Option<ContentType>,
+            new_category: Option<Category>
+        ) -> bool {
+            let caller = get_caller_address();
+            let content = self.content.read(content_id);
+            
+            // Verify ownership or permissions
+            let has_permission = self.has_permission(
+                content.creator.into(),
+                caller,
+                permission_flags::CONTENT_UPDATE
+            );
+            assert(has_permission, 'Unauthorized: caller does not have update permission');
+
+            // Store old values for history
+            let old_title = content.title;
+            let old_description = content.description;
+            let old_content_type = content.content_type;
+            let old_category = content.category;
+
+            // Update only the fields that are provided
+            if new_title.is_some() {
+                content.title = new_title.unwrap();
+            }
+            if new_description.is_some() {
+                content.description = new_description.unwrap();
+            }
+            if new_content_type.is_some() {
+                content.content_type = new_content_type.unwrap();
+            }
+            if new_category.is_some() {
+                content.category = new_category.unwrap();
+            }
+
+            // Store the update in history
+            let update = ContentUpdate {
+                content_id,
+                updater: caller,
+                timestamp: get_block_timestamp(),
+                old_title,
+                old_description,
+                old_content_type,
+                old_category
+            };
+
+            let mut updates = self.content_updates.read(content_id);
+            updates.append(update);
+            self.content_updates.write(content_id, updates);
+
+            // Increment update count
+            let count = self.content_update_count.read(content_id);
+            self.content_update_count.write(content_id, count + 1);
+
+            // Emit event
+            self.emit(Event::ContentUpdated(ContentUpdated {
+                content_id,
+                updater: caller,
+                timestamp: get_block_timestamp(),
+                old_title,
+                new_title: content.title,
+                old_description,
+                new_description: content.description,
+                old_content_type,
+                new_content_type: content.content_type,
+                old_category,
+                new_category: content.category
+            }));
+
+            true
+        }
+
+        fn get_content_update_history(
+            self: @ContractState,
+            content_id: felt252
+        ) -> Array<ContentUpdate> {
+            self.content_updates.read(content_id)
+        }
+
+        fn get_content_update_count(
+            self: @ContractState,
+            content_id: felt252
+        ) -> u64 {
+            self.content_update_count.read(content_id)
         }
     }
 }
