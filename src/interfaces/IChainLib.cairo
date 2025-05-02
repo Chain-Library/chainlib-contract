@@ -4,7 +4,9 @@ use crate::base::types::{
     TokenBoundAccount, User, Role, Rank, Permissions, AccessRule, VerificationRequirement,
     VerificationType,
 };
-use crate::chainlib::ChainLib::ChainLib::{Category, ContentType, ContentMetadata, DelegationInfo};
+use crate::chainlib::ChainLib::ChainLib::{
+    Category, Subscription, Payment, ContentType, ContentMetadata, DelegationInfo,
+};
 
 #[starknet::interface]
 pub trait IChainLib<TContractState> {
@@ -149,4 +151,32 @@ pub trait IChainLib<TContractState> {
     fn get_delegation_info(
         self: @TContractState, delegator: ContractAddress, permission: u64,
     ) -> DelegationInfo;
+
+    fn create_subscription(ref self: TContractState, user_id: u256, amount: u256) -> bool;
+
+    fn get_user_subscription(ref self: TContractState, user_id: u256) -> Subscription;
+
+    fn grant_premium_access(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn is_in_blacklist(self: @TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn get_premium_access_status(self: @TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn revoke_access(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
+    fn has_active_subscription(self: @TContractState, user_id: u256) -> bool;
+
+    fn set_cache_ttl(ref self: TContractState, ttl_seconds: u64) -> bool;
+
+    fn verify_access(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn _determine_access(
+        ref self: TContractState, user_id: u256, content_id: felt252, user: User,
+    ) -> bool;
+
+    fn _update_access_cache(
+        ref self: TContractState, cache_key: (u256, felt252), has_access: bool, current_time: u64,
+    );
+    fn initialize_access_control(ref self: TContractState, default_cache_ttl: u64) -> bool;
+
+    fn clear_access_cache(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
 }
