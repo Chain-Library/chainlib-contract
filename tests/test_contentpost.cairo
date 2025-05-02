@@ -3,7 +3,7 @@ use chain_lib::chainlib::ChainLib;
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare, spy_events,
-    EventSpy, EventSpyAssertionsTrait
+    EventSpy, EventSpyAssertionsTrait,
 };
 use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;
@@ -82,11 +82,11 @@ fn test_register_content() {
                     contract_address,
                     chain_lib::chainlib::ChainLib::ChainLib::Event::ContentRegistered(
                         chain_lib::chainlib::ChainLib::ChainLib::ContentRegistered {
-                            content_id: content_id, creator: caller_address
-                        }
-                    )
-                )
-            ]
+                            content_id: content_id, creator: caller_address,
+                        },
+                    ),
+                ),
+            ],
         )
 }
 
@@ -133,11 +133,11 @@ fn test_register_content_with_different_types() {
                     contract_address,
                     chain_lib::chainlib::ChainLib::ChainLib::Event::ContentRegistered(
                         chain_lib::chainlib::ChainLib::ChainLib::ContentRegistered {
-                            content_id: content_id, creator: creator_address
-                        }
-                    )
-                )
-            ]
+                            content_id: content_id, creator: creator_address,
+                        },
+                    ),
+                ),
+            ],
         );
 
     // Register another content with different type
@@ -320,19 +320,19 @@ fn test_register_content_multiple_users() {
                     contract_address,
                     chain_lib::chainlib::ChainLib::ChainLib::Event::ContentRegistered(
                         chain_lib::chainlib::ChainLib::ChainLib::ContentRegistered {
-                            content_id: first_content_id, creator: first_user_address
-                        }
-                    )
+                            content_id: first_content_id, creator: first_user_address,
+                        },
+                    ),
                 ),
                 (
                     contract_address,
                     chain_lib::chainlib::ChainLib::ChainLib::Event::ContentRegistered(
                         chain_lib::chainlib::ChainLib::ChainLib::ContentRegistered {
-                            content_id: second_content_id, creator: second_user_address
-                        }
-                    )
-                )
-            ]
+                            content_id: second_content_id, creator: second_user_address,
+                        },
+                    ),
+                ),
+            ],
         );
 }
 
@@ -500,27 +500,27 @@ fn test_register_multiple_content_items() {
                     contract_address,
                     chain_lib::chainlib::ChainLib::ChainLib::Event::ContentRegistered(
                         chain_lib::chainlib::ChainLib::ChainLib::ContentRegistered {
-                            content_id: content_id1, creator: writer_address
-                        }
-                    )
+                            content_id: content_id1, creator: writer_address,
+                        },
+                    ),
                 ),
                 (
                     contract_address,
                     chain_lib::chainlib::ChainLib::ChainLib::Event::ContentRegistered(
                         chain_lib::chainlib::ChainLib::ChainLib::ContentRegistered {
-                            content_id: content_id2, creator: writer_address
-                        }
-                    )
+                            content_id: content_id2, creator: writer_address,
+                        },
+                    ),
                 ),
                 (
                     contract_address,
                     chain_lib::chainlib::ChainLib::ChainLib::Event::ContentRegistered(
                         chain_lib::chainlib::ChainLib::ChainLib::ContentRegistered {
-                            content_id: content_id3, creator: writer_address
-                        }
-                    )
-                )
-            ]
+                            content_id: content_id3, creator: writer_address,
+                        },
+                    ),
+                ),
+            ],
         );
 }
 

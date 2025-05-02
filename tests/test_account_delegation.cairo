@@ -7,7 +7,7 @@ const PERMISSION_CALL: u64 = 0x4;
 const PERMISSION_ADMIN: u64 = 0x8;
 use chain_lib::chainlib::ChainLib::ChainLib::{
     DelegationInfo, delegation_flags, Event, DelegationCreated, DelegationExpired, DelegationUsed,
-    DelegationRevoked
+    DelegationRevoked,
 };
 // use chain_lib::interfaces::IChainLib::{
 //     IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait
@@ -25,7 +25,7 @@ use starknet::get_caller_address;
 use snforge_std::{
     ContractClassTrait, DeclareResultTrait, EventSpyAssertionsTrait, declare, spy_events,
     start_cheat_caller_address, stop_cheat_caller_address, start_cheat_block_timestamp,
-    stop_cheat_block_timestamp
+    stop_cheat_block_timestamp,
 };
 
 use starknet::{ContractAddress, get_block_timestamp};
@@ -77,8 +77,8 @@ fn test_create_delegation() {
     // Verify event was emitted
     let expected_event = Event::DelegationCreated(
         DelegationCreated {
-            delegator: owner, delegate, permissions: PERMISSION_TRANSFER, expiration, max_actions
-        }
+            delegator: owner, delegate, permissions: PERMISSION_TRANSFER, expiration, max_actions,
+        },
     );
 
     spy.assert_emitted(@array![(contract_address, expected_event)]);
@@ -150,7 +150,7 @@ fn test_revoke_delegation() {
     // Verify is_delegated returns false
     assert(
         !contract_instance.is_delegated(owner, delegate, PERMISSION_SIGN),
-        'is_delegated should be false'
+        'is_delegated should be false',
     );
 
     stop_cheat_caller_address(owner);
@@ -224,8 +224,8 @@ fn test_use_delegation() {
     // Verify event was emitted
     let expected_event = Event::DelegationUsed(
         DelegationUsed {
-            delegator: owner, delegate, permission: PERMISSION_CALL, remaining_actions: 2
-        }
+            delegator: owner, delegate, permission: PERMISSION_CALL, remaining_actions: 2,
+        },
     );
     spy.assert_emitted(@array![(contract_address, expected_event)]);
 
@@ -242,8 +242,8 @@ fn test_use_delegation() {
     // Check for both DelegationUsed and DelegationExpired events
     let expected_event = Event::DelegationUsed(
         DelegationUsed {
-            delegator: owner, delegate, permission: PERMISSION_CALL, remaining_actions: 0
-        }
+            delegator: owner, delegate, permission: PERMISSION_CALL, remaining_actions: 0,
+        },
     );
     spy.assert_emitted(@array![(contract_address, expected_event)]);
 
@@ -311,7 +311,7 @@ fn test_is_delegated_expired() {
     // Check delegation is valid before expiry
     assert(
         contract_instance.is_delegated(owner, delegate, PERMISSION_ADMIN),
-        'Should be valid before expiry'
+        'Should be valid before expiry',
     );
 
     // Advance time to after expiry
@@ -349,15 +349,15 @@ fn test_is_delegated_multiple_permissions() {
     // Check each permission
     assert(
         contract_instance.is_delegated(owner, delegate, PERMISSION_TRANSFER),
-        'Should have TRANSFER permission'
+        'Should have TRANSFER permission',
     );
     assert(
         contract_instance.is_delegated(owner, delegate, PERMISSION_SIGN),
-        'Should have SIGN permission'
+        'Should have SIGN permission',
     );
     assert(
         !contract_instance.is_delegated(owner, delegate, PERMISSION_CALL),
-        'Should not have CALL permission'
+        'Should not have CALL permission',
     );
 
     stop_cheat_caller_address(owner);
