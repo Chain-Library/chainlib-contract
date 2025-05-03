@@ -20,7 +20,7 @@ fn setup_content_with_price(
     admin_address: ContractAddress,
     contract_address: ContractAddress,
     content_id: felt252,
-    price: u256
+    price: u256,
 ) {
     // Set admin as caller for setting content price
     cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);

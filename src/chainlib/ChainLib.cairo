@@ -17,7 +17,7 @@ pub mod ChainLib {
 
     use crate::base::types::{
         TokenBoundAccount, User, Role, Rank, Permissions, permission_flags, AccessRule, AccessType,
-        VerificationRequirement, VerificationType,  Purchase, PurchaseStatus
+        VerificationRequirement, VerificationType, Purchase, PurchaseStatus,
     };
 
     // Define delegation-specific structures and constants
@@ -155,18 +155,17 @@ pub mod ChainLib {
         user_reputation_verifications: Map<ContractAddress, bool>,
         user_ownership_verifications: Map<ContractAddress, bool>,
         user_custom_verifications: Map<ContractAddress, bool>,
-
         content_prices: Map::<felt252, u256>, // Maps content_id to price
         next_purchase_id: u256, // Tracking the next available purchase ID
         purchases: Map::<u256, Purchase>, // Store purchases by ID
         user_purchase_count: Map::<ContractAddress, u32>, // Count of purchases per user
         user_purchase_ids: Map::<
-            (ContractAddress, u32), u256
+            (ContractAddress, u32), u256,
         >, // Map of (user, index) to purchase ID
         content_purchase_count: Map::<felt252, u32>, // Count of purchases per content
         content_purchase_ids: Map::<
-            (felt252, u32), u256
-        >, // Map of (content_id, index) to purchase ID
+            (felt252, u32), u256,
+        > // Map of (content_id, index) to purchase ID
     }
 
 
@@ -201,7 +200,6 @@ pub mod ChainLib {
         DelegationRevoked: DelegationRevoked,
         DelegationUsed: DelegationUsed,
         DelegationExpired: DelegationExpired,
-
         ContentPurchased: ContentPurchased,
         PurchaseStatusUpdated: PurchaseStatusUpdated,
     }
@@ -1562,7 +1560,7 @@ pub mod ChainLib {
         /// @param transaction_hash The hash of the transaction being used for payment.
         /// @return The unique ID of the newly created purchase.
         fn purchase_content(
-            ref self: ContractState, content_id: felt252, transaction_hash: felt252
+            ref self: ContractState, content_id: felt252, transaction_hash: felt252,
         ) -> u256 {
             // Validate input parameters
             assert!(content_id != 0, "Content ID cannot be empty");
@@ -1605,7 +1603,7 @@ pub mod ChainLib {
 
             // Emit event for the purchase
             let timestamp = get_block_timestamp();
-            self.emit(ContentPurchased { purchase_id, content_id, buyer, price, timestamp, });
+            self.emit(ContentPurchased { purchase_id, content_id, buyer, price, timestamp });
 
             // Return the purchase ID
             purchase_id
@@ -1628,7 +1626,7 @@ pub mod ChainLib {
         /// @param user_address The address of the user whose purchases are being retrieved.
         /// @return Array<Purchase> An array of purchase records for the user.
         fn get_user_purchases(
-            ref self: ContractState, user_address: ContractAddress
+            ref self: ContractState, user_address: ContractAddress,
         ) -> Array<Purchase> {
             // Initialize an empty array to hold the purchases
             let mut purchases: Array<Purchase> = ArrayTrait::new();
@@ -1681,7 +1679,7 @@ pub mod ChainLib {
         /// @param status The new status to set for the purchase.
         /// @return bool True if the status was updated successfully.
         fn update_purchase_status(
-            ref self: ContractState, purchase_id: u256, status: PurchaseStatus
+            ref self: ContractState, purchase_id: u256, status: PurchaseStatus,
         ) -> bool {
             // Only admin can update purchase status
             let caller = get_caller_address();
@@ -1710,7 +1708,7 @@ pub mod ChainLib {
                 PurchaseStatus::Refunded => 3_u8,
             };
 
-            self.emit(PurchaseStatusUpdated { purchase_id, new_status: status_code, timestamp, });
+            self.emit(PurchaseStatusUpdated { purchase_id, new_status: status_code, timestamp });
 
             true
         }

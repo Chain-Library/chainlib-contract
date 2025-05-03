@@ -125,7 +125,7 @@ pub enum PurchaseStatus {
     Pending,
     Completed,
     Failed,
-    Refunded
+    Refunded,
 }
 
 #[derive(Drop, Serde, starknet::Store, Debug)]
