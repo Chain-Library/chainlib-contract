@@ -11,8 +11,9 @@ pub mod ChainLib {
 
 
     use starknet::{
-        ContractAddress, get_block_timestamp, get_caller_address, contract_address_const,
+        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,,
     };
+    use crate::base::types::{Permissions, Rank, Role, TokenBoundAccount, User, permission_flags};
     use crate::interfaces::IChainLib::IChainLib;
 
     use crate::base::types::{
@@ -81,7 +82,7 @@ pub mod ChainLib {
         pub start_date: u64,
         pub end_date: u64,
         pub is_active: bool,
-        pub last_payment_date: u64,
+        pub last_payment_date: u64,,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -107,7 +108,18 @@ pub mod ChainLib {
         pub amount: u256,
         pub timestamp: u64,
         pub is_verified: bool,
-        pub is_refunded: bool,
+        pub is_refunded: bool,,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct ContentUpdate {
+        pub content_id: felt252,
+        pub updater: ContractAddress,
+        pub timestamp: u64,
+        pub old_title: felt252,
+        pub old_description: felt252,
+        pub old_content_type: ContentType,
+        pub old_category: Category,
     }
 
     #[storage]
@@ -119,20 +131,20 @@ pub mod ChainLib {
         next_course_id: u256,
         user_id: u256,
         users: Map<u256, User>,
-        creators_content: Map::<ContractAddress, ContentMetadata>,
-        content: Map::<felt252, ContentMetadata>,
-        content_tags: Map::<ContentMetadata, Array<felt252>>,
+        creators_content: Map<ContractAddress, ContentMetadata>,
+        content: Map<felt252, ContentMetadata>,
+        content_tags: Map<ContentMetadata, Array<felt252>>,
         // Subscription related storage
         subscription_id: u256,
-        subscriptions: Map::<u256, Subscription>,
+        subscriptions: Map<u256, Subscription>,
         // Instead of storing arrays directly, we'll use a counter-based approach
-        user_subscription_count: Map::<ContractAddress, u256>,
-        user_subscription_by_index: Map::<(ContractAddress, u256), u256>,
+        user_subscription_count: Map<ContractAddress, u256>,
+        user_subscription_by_index: Map<(ContractAddress, u256), u256>,
         payment_id: u256,
-        payments: Map::<u256, Payment>,
+        payments: Map<u256, Payment>,
         // Similar counter-based approach for subscription payments
-        subscription_payment_count: Map::<u256, u256>,
-        subscription_payment_by_index: Map::<(u256, u256), u256>,
+        subscription_payment_count: Map<u256, u256>,
+        subscription_payment_by_index: Map<(u256, u256), u256>,
         next_content_id: felt252,
         user_by_address: Map<ContractAddress, User>,
         operator_permissions: Map::<(u256, ContractAddress), Permissions>,
@@ -187,6 +199,7 @@ pub mod ChainLib {
         DelegationRevoked: DelegationRevoked,
         DelegationUsed: DelegationUsed,
         DelegationExpired: DelegationExpired,
+        ContentUpdated: ContentUpdated,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -1505,6 +1518,94 @@ pub mod ChainLib {
             self.access_cache.write((user_id, content_id), empty_cache);
 
             true
+        }
+
+        fn update_content(
+            ref self: ContractState,
+            content_id: felt252,
+            new_title: Option<felt252>,
+            new_description: Option<felt252>,
+            new_content_type: Option<ContentType>,
+            new_category: Option<Category>,
+        ) -> bool {
+            let caller = get_caller_address();
+            let content = self.content.read(content_id);
+
+            // Verify ownership or permissions
+            let has_permission = self
+                .has_permission(content.creator.into(), caller, permission_flags::CONTENT_UPDATE);
+            assert(has_permission, 'Unauthorized: caller does not have update permission');
+
+            // Store old values for history
+            let old_title = content.title;
+            let old_description = content.description;
+            let old_content_type = content.content_type;
+            let old_category = content.category;
+
+            // Update only the fields that are provided
+            if new_title.is_some() {
+                content.title = new_title.unwrap();
+            }
+            if new_description.is_some() {
+                content.description = new_description.unwrap();
+            }
+            if new_content_type.is_some() {
+                content.content_type = new_content_type.unwrap();
+            }
+            if new_category.is_some() {
+                content.category = new_category.unwrap();
+            }
+
+            // Store the update in history
+            let update = ContentUpdate {
+                content_id,
+                updater: caller,
+                timestamp: get_block_timestamp(),
+                old_title,
+                old_description,
+                old_content_type,
+                old_category,
+            };
+
+            let mut updates = self.content_updates.read(content_id);
+            updates.append(update);
+            self.content_updates.write(content_id, updates);
+
+            // Increment update count
+            let count = self.content_update_count.read(content_id);
+            self.content_update_count.write(content_id, count + 1);
+
+            // Emit event
+            self
+                .emit(
+                    Event::ContentUpdated(
+                        ContentUpdated {
+                            content_id,
+                            updater: caller,
+                            timestamp: get_block_timestamp(),
+                            old_title,
+                            new_title: content.title,
+                            old_description,
+                            new_description: content.description,
+                            old_content_type,
+                            new_content_type: content.content_type,
+                            old_category,
+                            new_category: content.category,
+                        },
+                    ),
+                );
+
+            true
+        }
+
+        fn get_content_update_history(
+            self: @ContractState, content_id: felt252,
+        ) -> Array<ContentUpdate> {
+            self.content_updates.read(content_id)
+        }
+
+        fn get_content_update_count(self: @ContractState, content_id: felt252) -> u64 {
+            self.content_update_count.read(content_id)
         }
     }
 }

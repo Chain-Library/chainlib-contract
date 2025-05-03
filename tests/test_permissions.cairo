@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod permission_tests {
+    use chain_lib::base::types::{Permissions, permission_flags};
     use chain_lib::chainlib::ChainLib;
     use chain_lib::interfaces::IChainLib::{
         IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait,
@@ -7,11 +8,9 @@ mod permission_tests {
     use snforge_std::{
         CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
     };
-    use starknet::ContractAddress;
     use starknet::class_hash::ClassHash;
     use starknet::contract_address::contract_address_const;
-    use starknet::get_caller_address;
-    use chain_lib::base::types::{Permissions, permission_flags};
+    use starknet::{ContractAddress, get_caller_address};
 
     fn setup() -> (ContractAddress, ContractAddress) {
         let declare_result = declare("ChainLib");

@@ -1,10 +1,12 @@
+use chain_lib::base::types::{Rank, Role};
+use chain_lib::chainlib::ChainLib::ChainLib::{
+    Event, PaymentProcessed, PaymentVerified, RecurringPaymentProcessed, RefundProcessed,
+};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
-
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare, spy_events,
     EventSpyAssertionsTrait,
 };
-use starknet::{ContractAddress, get_block_timestamp};
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};

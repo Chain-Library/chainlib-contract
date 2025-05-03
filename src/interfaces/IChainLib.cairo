@@ -1,11 +1,13 @@
 use starknet::ContractAddress;
 use core::array::Array;
 use crate::base::types::{
-    TokenBoundAccount, User, Role, Rank, Permissions, AccessRule, VerificationRequirement,
+    Permissions, Rank, Role, TokenBoundAccount, User, AccessRule, VerificationRequirement,
     VerificationType,
 };
 use crate::chainlib::ChainLib::ChainLib::{
-    Category, Subscription, Payment, ContentType, ContentMetadata, DelegationInfo,
+    
+    Category, Subscription, Payment, ContentMetadata, ContentType, ContentUpdate, DelegationInfo,
+,
 };
 
 #[starknet::interface]
@@ -179,4 +181,19 @@ pub trait IChainLib<TContractState> {
     fn initialize_access_control(ref self: TContractState, default_cache_ttl: u64) -> bool;
 
     fn clear_access_cache(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn update_content(
+        ref self: TContractState,
+        content_id: felt252,
+        new_title: Option<felt252>,
+        new_description: Option<felt252>,
+        new_content_type: Option<ContentType>,
+        new_category: Option<Category>,
+    ) -> bool;
+
+    fn get_content_update_history(
+        self: @TContractState, content_id: felt252,
+    ) -> Array<ContentUpdate>;
+
+    fn get_content_update_count(self: @TContractState, content_id: felt252) -> u64;
 }

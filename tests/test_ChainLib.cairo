@@ -1,6 +1,6 @@
 // Import the contract modules
+use chain_lib::base::types::{Rank, Role};
 use chain_lib::chainlib::ChainLib;
-
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, start_cheat_caller_address,
@@ -42,7 +42,6 @@ fn test_initial_data() {
     assert(admin == admin_address, 'deployment failed');
 }
 
-
 #[test]
 fn test_create_token_bount_account() {
     let (contract_address, _) = setup();
@@ -65,7 +64,6 @@ fn test_create_token_bount_account() {
     assert(token_bound_account.init_param1 == init_param1, 'init_param1 mismatch');
     assert(token_bound_account.init_param2 == init_param2, 'init_param2 mismatch');
 }
-
 
 #[test]
 fn test_create_user() {
