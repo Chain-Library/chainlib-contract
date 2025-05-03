@@ -3,8 +3,8 @@ use chain_lib::chainlib::ChainLib;
 use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentMetadata, ContentType};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{
-    CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpy, EventSpyAssertionsTrait,
-    cheat_caller_address, declare, spy_events,
+    CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare, spy_events,
+    EventSpy, EventSpyAssertionsTrait,
 };
 use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;

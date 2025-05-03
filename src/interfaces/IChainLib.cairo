@@ -1,9 +1,14 @@
 use starknet::ContractAddress;
-use crate::base::types::{Permissions, Rank, Role, TokenBoundAccount, User};
-use crate::chainlib::ChainLib::ChainLib::{
-    Category, ContentMetadata, ContentType, ContentUpdate, DelegationInfo,
+use core::array::Array;
+use crate::base::types::{
+    Permissions, Rank, Role, TokenBoundAccount, User, AccessRule, VerificationRequirement,
+    VerificationType,
 };
-
+use crate::chainlib::ChainLib::ChainLib::{
+    
+    Category, Subscription, Payment, ContentMetadata, ContentType, ContentUpdate, DelegationInfo,
+,
+};
 
 #[starknet::interface]
 pub trait IChainLib<TContractState> {
@@ -12,16 +17,25 @@ pub trait IChainLib<TContractState> {
         ref self: TContractState, user_name: felt252, init_param1: felt252, init_param2: felt252,
     ) -> u256;
     fn get_token_bound_account(ref self: TContractState, id: u256) -> TokenBoundAccount;
+
     fn get_token_bound_account_by_owner(
         ref self: TContractState, address: ContractAddress,
     ) -> TokenBoundAccount;
+
+    // User Management
     fn register_user(
         ref self: TContractState, username: felt252, role: Role, rank: Rank, metadata: felt252,
     ) -> u256;
+
     fn verify_user(ref self: TContractState, user_id: u256) -> bool;
+
     fn retrieve_user_profile(ref self: TContractState, user_id: u256) -> User;
-    fn is_verified(ref self: TContractState, user_id: u256) -> bool;
+
     fn getAdmin(self: @TContractState) -> ContractAddress;
+
+    fn is_verified(ref self: TContractState, user_id: u256) -> bool;
+
+    // Permission System
     fn get_permissions(
         self: @TContractState, account_id: u256, operator: ContractAddress,
     ) -> Permissions;
@@ -40,6 +54,8 @@ pub trait IChainLib<TContractState> {
     fn modify_account_permissions(
         ref self: TContractState, account_id: u256, permissions: Permissions,
     ) -> bool;
+
+    // Content Management
     fn register_content(
         ref self: TContractState,
         title: felt252,
@@ -49,29 +65,57 @@ pub trait IChainLib<TContractState> {
     ) -> felt252;
     fn get_content(ref self: TContractState, content_id: felt252) -> ContentMetadata;
 
-    /// Process the initial payment when a subscriber signs up
-    /// @param amount: The payment amount in wei
-    /// @param subscriber: The address of the subscriber
-    /// @return: Boolean indicating if the payment was successful
+    // Payment System
     fn process_initial_payment(
         ref self: TContractState, amount: u256, subscriber: ContractAddress,
     ) -> bool;
 
-    /// Process a recurring payment for an existing subscription
-    /// @param subscription_id: The unique identifier of the subscription
-    /// @return: Boolean indicating if the payment was successful
     fn process_recurring_payment(ref self: TContractState, subscription_id: u256) -> bool;
 
-    /// Verify if a payment has been processed successfully
-    /// @param payment_id: The unique identifier of the payment
-    /// @return: Boolean indicating if the payment is verified
     fn verify_payment(ref self: TContractState, payment_id: u256) -> bool;
 
-    /// Process a refund for a subscription
-    /// @param subscription_id: The unique identifier of the subscription to refund
-    /// @return: Boolean indicating if the refund was successful
     fn process_refund(ref self: TContractState, subscription_id: u256) -> bool;
 
+    // Content Access Control
+    fn set_content_access_rules(
+        ref self: TContractState, content_id: felt252, rules: Array<AccessRule>,
+    ) -> bool;
+
+    fn check_verification_requirements(
+        self: @TContractState, user: ContractAddress, content_id: felt252,
+    ) -> bool;
+
+    fn get_content_access_rules(self: @TContractState, content_id: felt252) -> Array<AccessRule>;
+
+    fn add_content_access_rule(
+        ref self: TContractState, content_id: felt252, rule: AccessRule,
+    ) -> bool;
+
+    fn set_verification_requirements(
+        ref self: TContractState, content_id: felt252, requirements: Array<VerificationRequirement>,
+    ) -> bool;
+
+    fn get_verification_requirements(
+        self: @TContractState, content_id: felt252,
+    ) -> Array<VerificationRequirement>;
+
+    fn set_user_verification(
+        ref self: TContractState,
+        user: ContractAddress,
+        verification_type: VerificationType,
+        is_verified: bool,
+    ) -> bool;
+
+    fn grant_content_permissions(
+        ref self: TContractState,
+        content_id: felt252,
+        user: ContractAddress,
+        permissions: Permissions,
+    ) -> bool;
+
+    fn has_content_permission(
+        self: @TContractState, content_id: felt252, user: ContractAddress, permission: u64,
+    ) -> bool;
 
     // NEW - Account Delegation Interface Functions
     fn create_delegation(
@@ -109,6 +153,34 @@ pub trait IChainLib<TContractState> {
     fn get_delegation_info(
         self: @TContractState, delegator: ContractAddress, permission: u64,
     ) -> DelegationInfo;
+
+    fn create_subscription(ref self: TContractState, user_id: u256, amount: u256) -> bool;
+
+    fn get_user_subscription(ref self: TContractState, user_id: u256) -> Subscription;
+
+    fn grant_premium_access(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn is_in_blacklist(self: @TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn get_premium_access_status(self: @TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn revoke_access(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
+    fn has_active_subscription(self: @TContractState, user_id: u256) -> bool;
+
+    fn set_cache_ttl(ref self: TContractState, ttl_seconds: u64) -> bool;
+
+    fn verify_access(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn _determine_access(
+        ref self: TContractState, user_id: u256, content_id: felt252, user: User,
+    ) -> bool;
+
+    fn _update_access_cache(
+        ref self: TContractState, cache_key: (u256, felt252), has_access: bool, current_time: u64,
+    );
+    fn initialize_access_control(ref self: TContractState, default_cache_ttl: u64) -> bool;
+
+    fn clear_access_cache(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
 
     fn update_content(
         ref self: TContractState,

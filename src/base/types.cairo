@@ -63,6 +63,40 @@ pub enum Rank {
     EXPERT,
 }
 
+#[derive(Drop, starknet::Store, Serde, Debug, Copy)]
+pub struct AccessRule {
+    pub access_type: AccessType,
+    pub permission_level: u64,
+    pub conditions: Option<felt252>,
+    pub expires_at: u64,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+pub enum AccessType {
+    #[default]
+    View,
+    Edit,
+    Share,
+    Manage,
+    Admin,
+}
+
+#[derive(Drop, starknet::Store, Serde, Debug, Copy)]
+pub struct VerificationRequirement {
+    pub requirement_type: VerificationType,
+    pub threshold: u64,
+    pub valid_until: u64,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+pub enum VerificationType {
+    #[default]
+    Identity,
+    Payment,
+    Reputation,
+    Ownership,
+    Custom,
+}
 
 #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
 pub struct DelegationInfo {
