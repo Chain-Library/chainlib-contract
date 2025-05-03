@@ -2,7 +2,7 @@ use starknet::ContractAddress;
 use core::array::Array;
 use crate::base::types::{
     TokenBoundAccount, User, Role, Rank, Permissions, AccessRule, VerificationRequirement,
-    VerificationType,
+    VerificationType, Purchase, PurchaseStatus,
 };
 use crate::chainlib::ChainLib::ChainLib::{
     Category, Subscription, Payment, ContentType, ContentMetadata, DelegationInfo,
@@ -62,6 +62,9 @@ pub trait IChainLib<TContractState> {
         category: Category,
     ) -> felt252;
     fn get_content(ref self: TContractState, content_id: felt252) -> ContentMetadata;
+
+
+    fn set_content_price(ref self: TContractState, content_id: felt252, price: u256);
 
     // Payment System
     fn process_initial_payment(
@@ -179,4 +182,16 @@ pub trait IChainLib<TContractState> {
     fn initialize_access_control(ref self: TContractState, default_cache_ttl: u64) -> bool;
 
     fn clear_access_cache(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
+
+    fn purchase_content(
+        ref self: TContractState, content_id: felt252, transaction_hash: felt252,
+    ) -> u256;
+    fn get_purchase_details(ref self: TContractState, purchase_id: u256) -> Purchase;
+    fn get_user_purchases(
+        ref self: TContractState, user_address: ContractAddress,
+    ) -> Array<Purchase>;
+    fn verify_purchase(ref self: TContractState, purchase_id: u256) -> bool;
+    fn update_purchase_status(
+        ref self: TContractState, purchase_id: u256, status: PurchaseStatus,
+    ) -> bool;
 }

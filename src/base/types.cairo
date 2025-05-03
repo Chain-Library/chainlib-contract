@@ -119,3 +119,22 @@ pub mod delegation_flags {
     // Combined flag for full delegation capabilities
     pub const FULL_DELEGATION: u64 = 0xF0000;
 }
+#[derive(Copy, Drop, Serde, starknet::Store, Clone, PartialEq, Debug)]
+pub enum PurchaseStatus {
+    #[default]
+    Pending,
+    Completed,
+    Failed,
+    Refunded,
+}
+
+#[derive(Drop, Serde, starknet::Store, Debug)]
+pub struct Purchase {
+    pub id: u256,
+    pub content_id: felt252,
+    pub buyer: ContractAddress,
+    pub price: u256,
+    pub status: PurchaseStatus,
+    pub timestamp: u64,
+    pub transaction_hash: felt252,
+}
