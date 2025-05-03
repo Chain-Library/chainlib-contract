@@ -182,7 +182,6 @@ pub trait IChainLib<TContractState> {
     fn initialize_access_control(ref self: TContractState, default_cache_ttl: u64) -> bool;
 
     fn clear_access_cache(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
-}
 
     fn purchase_content(
         ref self: TContractState, content_id: felt252, transaction_hash: felt252
@@ -195,4 +194,5 @@ pub trait IChainLib<TContractState> {
     fn update_purchase_status(
         ref self: TContractState, purchase_id: u256, status: PurchaseStatus
     ) -> bool;
+
 }
