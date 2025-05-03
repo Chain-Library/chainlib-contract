@@ -1,17 +1,16 @@
-use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
-
-use snforge_std::{
-    CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare, spy_events,
-    EventSpyAssertionsTrait
+use chain_lib::base::types::{Rank, Role};
+use chain_lib::chainlib::ChainLib::ChainLib::{
+    Event, PaymentProcessed, PaymentVerified, RecurringPaymentProcessed, RefundProcessed,
 };
-use starknet::{ContractAddress, get_block_timestamp};
+use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
+use snforge_std::{
+    CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpyAssertionsTrait,
+    cheat_caller_address, declare, spy_events,
+};
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
-use chain_lib::base::types::{Role, Rank};
-use chain_lib::chainlib::ChainLib::ChainLib::{
-    Event, PaymentProcessed, RecurringPaymentProcessed, PaymentVerified, RefundProcessed
-};
+use starknet::{ContractAddress, get_block_timestamp};
 
 
 fn setup() -> (ContractAddress, ContractAddress) {
@@ -191,8 +190,8 @@ fn test_initial_payment_event() {
             subscription_id,
             amount,
             subscriber: subscriber_address,
-            timestamp: get_block_timestamp()
-        }
+            timestamp: get_block_timestamp(),
+        },
     );
 
     spy.assert_emitted(@array![(contract_address, expected_event)]);
@@ -363,8 +362,8 @@ fn test_process_recurring_payment_event() {
             subscription_id,
             amount,
             subscriber: subscriber_address,
-            timestamp: new_timestamp
-        }
+            timestamp: new_timestamp,
+        },
     );
 
     spy.assert_emitted(@array![(contract_address, expected_event)]);
@@ -520,8 +519,8 @@ fn test_verify_payment_event() {
 
     let expected_event = Event::PaymentProcessed(
         PaymentProcessed {
-            payment_id, subscription_id, subscriber: subscriber_address, amount, timestamp
-        }
+            payment_id, subscription_id, subscriber: subscriber_address, amount, timestamp,
+        },
     );
 
     spy.assert_emitted(@array![(contract_address, expected_event)]);
@@ -733,7 +732,7 @@ fn test_process_refund_event() {
     let timestamp = get_block_timestamp();
 
     let expected_event = Event::RefundProcessed(
-        RefundProcessed { payment_id, subscription_id, amount, timestamp }
+        RefundProcessed { payment_id, subscription_id, amount, timestamp },
     );
 
     spy.assert_emitted(@array![(contract_address, expected_event)]);

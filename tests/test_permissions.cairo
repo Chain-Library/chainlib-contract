@@ -1,17 +1,16 @@
 #[cfg(test)]
 mod permission_tests {
+    use chain_lib::base::types::{Permissions, permission_flags};
     use chain_lib::chainlib::ChainLib;
     use chain_lib::interfaces::IChainLib::{
-        IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait
+        IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait,
     };
     use snforge_std::{
-        CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare
+        CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
     };
-    use starknet::ContractAddress;
     use starknet::class_hash::ClassHash;
     use starknet::contract_address::contract_address_const;
-    use starknet::get_caller_address;
-    use chain_lib::base::types::{Permissions, permission_flags};
+    use starknet::{ContractAddress, get_caller_address};
 
     fn setup() -> (ContractAddress, ContractAddress) {
         let declare_result = declare("ChainLib");
@@ -76,7 +75,7 @@ mod permission_tests {
         let operator_permissions = dispatcher.get_permissions(account_id, operator_address);
         assert(
             operator_permissions.value == (permission_flags::READ | permission_flags::EXECUTE),
-            'wrong perm'
+            'wrong perm',
         );
 
         // Verify the operator has specific permissions
@@ -156,7 +155,7 @@ mod permission_tests {
 
         // Modify permissions - remove WRITE permission
         let modified_permissions = Permissions {
-            value: permission_flags::FULL & ~permission_flags::WRITE
+            value: permission_flags::FULL & ~permission_flags::WRITE,
         };
 
         let result = dispatcher.modify_account_permissions(account_id, modified_permissions);
@@ -189,44 +188,44 @@ mod permission_tests {
         // Assign different permissions to each operator
         dispatcher
             .set_operator_permissions(
-                account_id, operator1, Permissions { value: permission_flags::READ }
+                account_id, operator1, Permissions { value: permission_flags::READ },
             );
 
         dispatcher
             .set_operator_permissions(
-                account_id, operator2, Permissions { value: permission_flags::EXECUTE }
+                account_id, operator2, Permissions { value: permission_flags::EXECUTE },
             );
 
         dispatcher
             .set_operator_permissions(
-                account_id, operator3, Permissions { value: permission_flags::WRITE }
+                account_id, operator3, Permissions { value: permission_flags::WRITE },
             );
 
         // Verify each operator has correct permissions
         assert(
-            dispatcher.has_permission(account_id, operator1, permission_flags::READ), 'op1 no READ'
+            dispatcher.has_permission(account_id, operator1, permission_flags::READ), 'op1 no READ',
         );
         assert(
             !dispatcher.has_permission(account_id, operator1, permission_flags::EXECUTE),
-            'op1 has EXEC'
+            'op1 has EXEC',
         );
 
         assert(
             dispatcher.has_permission(account_id, operator2, permission_flags::EXECUTE),
-            'op2 no EXEC'
+            'op2 no EXEC',
         );
         assert(
             !dispatcher.has_permission(account_id, operator2, permission_flags::READ),
-            'op2 has READ'
+            'op2 has READ',
         );
 
         assert(
             dispatcher.has_permission(account_id, operator3, permission_flags::WRITE),
-            'op3 no WRITE'
+            'op3 no WRITE',
         );
         assert(
             !dispatcher.has_permission(account_id, operator3, permission_flags::READ),
-            'op3 has READ'
+            'op3 has READ',
         );
 
         // Revoke one operator and check others still have permissions
@@ -234,15 +233,15 @@ mod permission_tests {
 
         assert(
             !dispatcher.has_permission(account_id, operator1, permission_flags::READ),
-            'op1 still has READ'
+            'op1 still has READ',
         );
         assert(
             dispatcher.has_permission(account_id, operator2, permission_flags::EXECUTE),
-            'op2 lost EXEC'
+            'op2 lost EXEC',
         );
         assert(
             dispatcher.has_permission(account_id, operator3, permission_flags::WRITE),
-            'op3 lost WRITE'
+            'op3 lost WRITE',
         );
     }
 
@@ -268,8 +267,8 @@ mod permission_tests {
             (permission_flags::WRITE | permission_flags::TRANSFER, 'WRITE+TRANSFER'),
             (
                 permission_flags::MANAGE_PERMISSIONS | permission_flags::MANAGE_OPERATORS,
-                'MANAGE combo'
-            )
+                'MANAGE combo',
+            ),
         ];
 
         let mut i: u32 = 0;
@@ -333,7 +332,7 @@ mod permission_tests {
         let operator: ContractAddress = contract_address_const::<'operator'>();
         dispatcher
             .set_operator_permissions(
-                account_id, operator, Permissions { value: permission_flags::READ }
+                account_id, operator, Permissions { value: permission_flags::READ },
             );
 
         // Switch to operator

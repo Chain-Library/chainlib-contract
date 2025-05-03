@@ -5,11 +5,10 @@ pub mod ChainLib {
         StoragePointerWriteAccess,
     };
     use starknet::{
-        ContractAddress, get_block_timestamp, get_caller_address, contract_address_const
+        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
     };
+    use crate::base::types::{Permissions, Rank, Role, TokenBoundAccount, User, permission_flags};
     use crate::interfaces::IChainLib::IChainLib;
-
-    use crate::base::types::{TokenBoundAccount, User, Role, Rank, Permissions, permission_flags};
 
     // Define delegation-specific structures and constants
 
@@ -50,7 +49,7 @@ pub mod ChainLib {
         #[default]
         Education,
         Literature,
-        Art
+        Art,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -60,7 +59,7 @@ pub mod ChainLib {
         pub description: felt252,
         pub content_type: ContentType,
         pub creator: ContractAddress,
-        pub category: Category
+        pub category: Category,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -72,7 +71,7 @@ pub mod ChainLib {
         pub start_date: u64,
         pub end_date: u64,
         pub is_active: bool,
-        pub last_payment_date: u64
+        pub last_payment_date: u64,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -82,7 +81,7 @@ pub mod ChainLib {
         pub amount: u256,
         pub timestamp: u64,
         pub is_verified: bool,
-        pub is_refunded: bool
+        pub is_refunded: bool,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -93,7 +92,7 @@ pub mod ChainLib {
         pub old_title: felt252,
         pub old_description: felt252,
         pub old_content_type: ContentType,
-        pub old_category: Category
+        pub old_category: Category,
     }
 
     #[storage]
@@ -106,33 +105,33 @@ pub mod ChainLib {
         next_course_id: u256,
         user_id: u256,
         users: Map<u256, User>,
-        creators_content: Map::<ContractAddress, ContentMetadata>,
-        content: Map::<felt252, ContentMetadata>,
-        content_tags: Map::<ContentMetadata, Array<felt252>>,
+        creators_content: Map<ContractAddress, ContentMetadata>,
+        content: Map<felt252, ContentMetadata>,
+        content_tags: Map<ContentMetadata, Array<felt252>>,
         // Subscription related storage
         subscription_id: u256,
-        subscriptions: Map::<u256, Subscription>,
+        subscriptions: Map<u256, Subscription>,
         // Instead of storing arrays directly, we'll use a counter-based approach
-        user_subscription_count: Map::<ContractAddress, u256>,
-        user_subscription_by_index: Map::<(ContractAddress, u256), u256>,
+        user_subscription_count: Map<ContractAddress, u256>,
+        user_subscription_by_index: Map<(ContractAddress, u256), u256>,
         payment_id: u256,
-        payments: Map::<u256, Payment>,
+        payments: Map<u256, Payment>,
         // Similar counter-based approach for subscription payments
-        subscription_payment_count: Map::<u256, u256>,
-        subscription_payment_by_index: Map::<(u256, u256), u256>,
+        subscription_payment_count: Map<u256, u256>,
+        subscription_payment_by_index: Map<(u256, u256), u256>,
         next_content_id: felt252,
         user_by_address: Map<ContractAddress, User>,
         // Permission system storage
-        operator_permissions: Map::<
-            (u256, ContractAddress), Permissions
+        operator_permissions: Map<
+            (u256, ContractAddress), Permissions,
         >, // Maps account_id and operator to permissions
         // NEW - Delegation system storage
-        delegations: Map::<
-            (ContractAddress, u64), DelegationInfo
+        delegations: Map<
+            (ContractAddress, u64), DelegationInfo,
         >, // Maps (delegator, permission) to delegation info
-        delegation_nonces: Map::<ContractAddress, u64>, // Track delegations for each address
-        delegation_history: Map::<
-            (ContractAddress, ContractAddress), u64
+        delegation_nonces: Map<ContractAddress, u64>, // Track delegations for each address
+        delegation_history: Map<
+            (ContractAddress, ContractAddress), u64,
         >, // Track history between delegator and delegate
         content_updates: Map<felt252, Array<ContentUpdate>>,
         content_update_count: Map<felt252, u64>,
@@ -263,7 +262,7 @@ pub mod ChainLib {
     #[derive(Drop, starknet::Event)]
     pub struct ContentRegistered {
         pub content_id: felt252,
-        pub creator: ContractAddress
+        pub creator: ContractAddress,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -278,13 +277,13 @@ pub mod ChainLib {
         pub old_content_type: ContentType,
         pub new_content_type: ContentType,
         pub old_category: Category,
-        pub new_category: Category
+        pub new_category: Category,
     }
 
     #[abi(embed_v0)]
     impl ChainLibNetImpl of IChainLib<ContractState> {
         fn create_token_account(
-            ref self: ContractState, user_name: felt252, init_param1: felt252, init_param2: felt252
+            ref self: ContractState, user_name: felt252, init_param1: felt252, init_param2: felt252,
         ) -> u256 {
             // Ensure that the username is not empty.
             assert!(user_name != 0, "User name cannot be empty");
@@ -311,7 +310,7 @@ pub mod ChainLib {
                 init_param2: init_param2,
                 created_at: get_block_timestamp(), // Capture the creation timestamp.
                 updated_at: get_block_timestamp(), // Set initial updated timestamp.
-                owner_permissions: owner_permissions, // Set owner permissions
+                owner_permissions: owner_permissions // Set owner permissions
             };
 
             // Store the new account in the accounts mapping
@@ -341,7 +340,7 @@ pub mod ChainLib {
             token_bound_account
         }
         fn get_token_bound_account_by_owner(
-            ref self: ContractState, address: ContractAddress
+            ref self: ContractState, address: ContractAddress,
         ) -> TokenBoundAccount {
             let token_bound_account = self.accountsaddr.read(address);
             token_bound_account
@@ -349,7 +348,7 @@ pub mod ChainLib {
 
 
         fn register_user(
-            ref self: ContractState, username: felt252, role: Role, rank: Rank, metadata: felt252
+            ref self: ContractState, username: felt252, role: Role, rank: Rank, metadata: felt252,
         ) -> u256 {
             // Ensure that the username is not empty.
             assert!(username != 0, "User name cannot be empty");
@@ -365,7 +364,7 @@ pub mod ChainLib {
                 role: role,
                 rank: rank,
                 verified: false, // Default verification status is false.
-                metadata: metadata
+                metadata: metadata,
             };
 
             // Store the new user in the users mapping.
@@ -416,7 +415,7 @@ pub mod ChainLib {
         // Permission system implementation
 
         fn get_permissions(
-            self: @ContractState, account_id: u256, operator: ContractAddress
+            self: @ContractState, account_id: u256, operator: ContractAddress,
         ) -> Permissions {
             let account = self.accounts.read(account_id);
 
@@ -433,7 +432,7 @@ pub mod ChainLib {
             ref self: ContractState,
             account_id: u256,
             operator: ContractAddress,
-            permissions: Permissions
+            permissions: Permissions,
         ) -> bool {
             let caller = get_caller_address();
             let account = self.accounts.read(account_id);
@@ -443,7 +442,7 @@ pub mod ChainLib {
             assert(
                 account.address == caller
                     || (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0,
-                'No permission'
+                'No permission',
             );
 
             // Store the operator's permissions
@@ -456,7 +455,7 @@ pub mod ChainLib {
         }
 
         fn revoke_operator(
-            ref self: ContractState, account_id: u256, operator: ContractAddress
+            ref self: ContractState, account_id: u256, operator: ContractAddress,
         ) -> bool {
             let caller = get_caller_address();
             let account = self.accounts.read(account_id);
@@ -466,7 +465,7 @@ pub mod ChainLib {
             assert(
                 account.address == caller
                     || (caller_permissions.value & permission_flags::MANAGE_OPERATORS) != 0,
-                'No permission'
+                'No permission',
             );
 
             // Set permissions to NONE
@@ -480,14 +479,14 @@ pub mod ChainLib {
         }
 
         fn has_permission(
-            self: @ContractState, account_id: u256, operator: ContractAddress, permission: u64
+            self: @ContractState, account_id: u256, operator: ContractAddress, permission: u64,
         ) -> bool {
             let permissions = self.get_permissions(account_id, operator);
             (permissions.value & permission) != 0
         }
 
         fn modify_account_permissions(
-            ref self: ContractState, account_id: u256, permissions: Permissions
+            ref self: ContractState, account_id: u256, permissions: Permissions,
         ) -> bool {
             let caller = get_caller_address();
             let mut account = self.accounts.read(account_id);
@@ -519,7 +518,7 @@ pub mod ChainLib {
             title: felt252,
             description: felt252,
             content_type: ContentType,
-            category: Category
+            category: Category,
         ) -> felt252 {
             assert!(title != 0, "Title cannot be empty");
             assert!(description != 0, "Description cannot be empty");
@@ -537,7 +536,7 @@ pub mod ChainLib {
                 description: description,
                 content_type: content_type,
                 creator: creator,
-                category: category
+                category: category,
             };
 
             self.content.write(content_id, content_metadata);
@@ -562,7 +561,7 @@ pub mod ChainLib {
         /// @param subscriber The address of the subscriber
         /// @return bool Returns true if the payment is processed successfully
         fn process_initial_payment(
-            ref self: ContractState, amount: u256, subscriber: ContractAddress
+            ref self: ContractState, amount: u256, subscriber: ContractAddress,
         ) -> bool {
             // Get the caller's address - this is who is initiating the subscription
             let caller = get_caller_address();
@@ -585,7 +584,7 @@ pub mod ChainLib {
                 start_date: current_time,
                 end_date: current_time + subscription_period,
                 is_active: true,
-                last_payment_date: current_time
+                last_payment_date: current_time,
             };
 
             // Store the subscription
@@ -599,7 +598,7 @@ pub mod ChainLib {
                 amount: amount,
                 timestamp: current_time,
                 is_verified: true, // Initial payment is auto-verified
-                is_refunded: false
+                is_refunded: false,
             };
 
             self.payments.write(payment_id, new_payment);
@@ -637,8 +636,8 @@ pub mod ChainLib {
                         subscription_id: subscription_id,
                         subscriber: subscriber,
                         amount: amount,
-                        timestamp: current_time
-                    }
+                        timestamp: current_time,
+                    },
                 );
 
             true
@@ -681,7 +680,7 @@ pub mod ChainLib {
                 amount: subscription.amount,
                 timestamp: current_time,
                 is_verified: true, // Auto-verify for simplicity
-                is_refunded: false
+                is_refunded: false,
             };
 
             self.payments.write(payment_id, new_payment);
@@ -708,8 +707,8 @@ pub mod ChainLib {
                         subscription_id: subscription_id,
                         subscriber: subscription.subscriber,
                         amount: subscription.amount,
-                        timestamp: current_time
-                    }
+                        timestamp: current_time,
+                    },
                 );
 
             true
@@ -743,8 +742,8 @@ pub mod ChainLib {
                     PaymentVerified {
                         payment_id: payment_id,
                         subscription_id: payment.subscription_id,
-                        timestamp: get_block_timestamp()
-                    }
+                        timestamp: get_block_timestamp(),
+                    },
                 );
 
             true
@@ -795,8 +794,8 @@ pub mod ChainLib {
                         payment_id: payment_id,
                         subscription_id: subscription_id,
                         amount: payment.amount,
-                        timestamp: get_block_timestamp()
-                    }
+                        timestamp: get_block_timestamp(),
+                    },
                 );
 
             true
@@ -814,7 +813,7 @@ pub mod ChainLib {
             delegate: ContractAddress,
             permissions: u64,
             expiration: u64,
-            max_actions: u64
+            max_actions: u64,
         ) -> bool {
             // Ensure the delegate address is valid
             let x: ContractAddress = 0.try_into().unwrap();
@@ -851,8 +850,8 @@ pub mod ChainLib {
                     Event::DelegationCreated(
                         DelegationCreated {
                             delegator, delegate, permissions, expiration, max_actions,
-                        }
-                    )
+                        },
+                    ),
                 );
 
             true
@@ -860,7 +859,7 @@ pub mod ChainLib {
 
         // Revokes an active delegation
         fn revoke_delegation(
-            ref self: ContractState, delegate: ContractAddress, permissions: u64
+            ref self: ContractState, delegate: ContractAddress, permissions: u64,
         ) -> bool {
             // Get the delegator (caller)
             let delegator = get_caller_address();
@@ -877,7 +876,7 @@ pub mod ChainLib {
             self.delegations.write((delegator, permissions), delegation_info);
 
             // Emit delegation revoked event
-            self.emit(Event::DelegationRevoked(DelegationRevoked { delegator, delegate, }));
+            self.emit(Event::DelegationRevoked(DelegationRevoked { delegator, delegate }));
 
             true
         }
@@ -887,7 +886,7 @@ pub mod ChainLib {
             self: @ContractState,
             delegator: ContractAddress,
             delegate: ContractAddress,
-            permission: u64
+            permission: u64,
         ) -> bool {
             let delegation_info = self.delegations.read((delegator, permission));
 
@@ -914,7 +913,7 @@ pub mod ChainLib {
 
         // Uses a delegation to perform an action, updating usage count
         fn use_delegation(
-            ref self: ContractState, delegator: ContractAddress, permission: u64
+            ref self: ContractState, delegator: ContractAddress, permission: u64,
         ) -> bool {
             let caller = get_caller_address();
 
@@ -941,8 +940,8 @@ pub mod ChainLib {
                     Event::DelegationUsed(
                         DelegationUsed {
                             delegator, delegate: caller, permission, remaining_actions,
-                        }
-                    )
+                        },
+                    ),
                 );
 
             // Check if the delegation has reached its action limit
@@ -953,7 +952,7 @@ pub mod ChainLib {
                 self.delegations.write((delegator, permission), delegation_info);
 
                 // Emit delegation expired event
-                self.emit(DelegationExpired { delegator, delegate: caller, });
+                self.emit(DelegationExpired { delegator, delegate: caller });
             }
 
             true
@@ -962,7 +961,7 @@ pub mod ChainLib {
 
         // Get delegation information
         fn get_delegation_info(
-            self: @ContractState, delegator: ContractAddress, permission: u64
+            self: @ContractState, delegator: ContractAddress, permission: u64,
         ) -> DelegationInfo {
             self.delegations.read((delegator, permission))
         }
@@ -973,17 +972,14 @@ pub mod ChainLib {
             new_title: Option<felt252>,
             new_description: Option<felt252>,
             new_content_type: Option<ContentType>,
-            new_category: Option<Category>
+            new_category: Option<Category>,
         ) -> bool {
             let caller = get_caller_address();
             let content = self.content.read(content_id);
-            
+
             // Verify ownership or permissions
-            let has_permission = self.has_permission(
-                content.creator.into(),
-                caller,
-                permission_flags::CONTENT_UPDATE
-            );
+            let has_permission = self
+                .has_permission(content.creator.into(), caller, permission_flags::CONTENT_UPDATE);
             assert(has_permission, 'Unauthorized: caller does not have update permission');
 
             // Store old values for history
@@ -1014,7 +1010,7 @@ pub mod ChainLib {
                 old_title,
                 old_description,
                 old_content_type,
-                old_category
+                old_category,
             };
 
             let mut updates = self.content_updates.read(content_id);
@@ -1026,34 +1022,35 @@ pub mod ChainLib {
             self.content_update_count.write(content_id, count + 1);
 
             // Emit event
-            self.emit(Event::ContentUpdated(ContentUpdated {
-                content_id,
-                updater: caller,
-                timestamp: get_block_timestamp(),
-                old_title,
-                new_title: content.title,
-                old_description,
-                new_description: content.description,
-                old_content_type,
-                new_content_type: content.content_type,
-                old_category,
-                new_category: content.category
-            }));
+            self
+                .emit(
+                    Event::ContentUpdated(
+                        ContentUpdated {
+                            content_id,
+                            updater: caller,
+                            timestamp: get_block_timestamp(),
+                            old_title,
+                            new_title: content.title,
+                            old_description,
+                            new_description: content.description,
+                            old_content_type,
+                            new_content_type: content.content_type,
+                            old_category,
+                            new_category: content.category,
+                        },
+                    ),
+                );
 
             true
         }
 
         fn get_content_update_history(
-            self: @ContractState,
-            content_id: felt252
+            self: @ContractState, content_id: felt252,
         ) -> Array<ContentUpdate> {
             self.content_updates.read(content_id)
         }
 
-        fn get_content_update_count(
-            self: @ContractState,
-            content_id: felt252
-        ) -> u64 {
+        fn get_content_update_count(self: @ContractState, content_id: felt252) -> u64 {
             self.content_update_count.read(content_id)
         }
     }

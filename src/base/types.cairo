@@ -9,7 +9,7 @@ pub struct TokenBoundAccount {
     pub init_param2: felt252,
     pub created_at: u64,
     pub updated_at: u64,
-    pub owner_permissions: Permissions, // Owner's permissions
+    pub owner_permissions: Permissions // Owner's permissions
 }
 
 #[derive(Drop, Serde, starknet::Store, Clone)]
@@ -26,7 +26,7 @@ pub struct User {
 // Permission flags using bit flags for flexibility
 #[derive(Drop, Copy, Serde, starknet::Store, Default, PartialEq)]
 pub struct Permissions {
-    pub value: u64, // Using u64 to store permission bits
+    pub value: u64 // Using u64 to store permission bits
 }
 
 // Permission constants
