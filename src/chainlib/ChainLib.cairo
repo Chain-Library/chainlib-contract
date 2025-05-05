@@ -17,7 +17,7 @@ pub mod ChainLib {
 
     use crate::base::types::{
         TokenBoundAccount, User, Role, Rank, Permissions, permission_flags, AccessRule, AccessType,
-        VerificationRequirement, VerificationType, Purchase, PurchaseStatus,
+        Status, VerificationRequirement, VerificationType, Purchase, PurchaseStatus,
     };
 
     // Define delegation-specific structures and constants
@@ -182,6 +182,7 @@ pub mod ChainLib {
     pub enum Event {
         TokenBoundAccountCreated: TokenBoundAccountCreated,
         UserCreated: UserCreated,
+        UserUpdated: UserUpdated,
         PaymentProcessed: PaymentProcessed,
         RecurringPaymentProcessed: RecurringPaymentProcessed,
         PaymentVerified: PaymentVerified,
@@ -207,6 +208,11 @@ pub mod ChainLib {
     #[derive(Drop, starknet::Event)]
     pub struct TokenBoundAccountCreated {
         pub id: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct UserUpdated {
+        pub user_id: u256,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -437,6 +443,7 @@ pub mod ChainLib {
                 rank: rank,
                 verified: false, // Default verification status is false.
                 metadata: metadata,
+                status: Status::ACTIVE,
             };
 
             // Store the new user in the users mapping.
@@ -455,6 +462,56 @@ pub mod ChainLib {
             user_id
         }
 
+        fn update_user_profile(
+            ref self: ContractState,
+            id: u256,
+            username: felt252,
+            wallet_address: ContractAddress,
+            role: Role,
+            rank: Rank,
+            metadata: felt252,
+        ) {
+            assert!(username != 0, "User name cannot be empty");
+            let zero: ContractAddress = contract_address_const::<0>();
+            assert!(wallet_address != zero, "Address cannot be zero");
+
+            let user = self.users.read(id);
+
+            // Ensure that the caller is the user or has permission to update.
+            let caller = get_caller_address();
+            assert(caller == user.wallet_address, 'Only user can update');
+
+            // Update the user profile with new details.
+            let updated_user = User {
+                id: user.id,
+                username: username,
+                wallet_address: wallet_address,
+                role: role,
+                rank: rank,
+                verified: user.verified, // Keep the existing verification status.
+                metadata: metadata,
+                status: Status::ACTIVE,
+            };
+            // Store the updated user profile in the users mapping.
+            self.users.write(id, updated_user);
+
+            self.emit(UserUpdated { user_id: id });
+        }
+
+        fn deactivate_profile(ref self: ContractState, user_id: u256) -> bool {
+            let mut user = self.users.read(user_id);
+            // Ensure that the caller is the user or has permission to update.
+            let caller = get_caller_address();
+            assert(caller == user.wallet_address, 'Only user can update');
+
+            // Update the user profile with new details.
+            user.status = Status::DEACTIVATED;
+
+            // Store the updated user profile in the users mapping.
+            self.users.write(user_id, user);
+
+            true
+        }
 
         fn verify_user(ref self: ContractState, user_id: u256) -> bool {
             let caller = get_caller_address();

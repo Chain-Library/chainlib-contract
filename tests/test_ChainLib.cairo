@@ -10,7 +10,7 @@ use starknet::{ContractAddress};
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
-use chain_lib::base::types::{Role, Rank, PurchaseStatus};
+use chain_lib::base::types::{Role, Rank, PurchaseStatus, Status};
 use chain_lib::chainlib::ChainLib::ChainLib::{ContentType, Category};
 
 /// Helper function to create a content item with a price
@@ -131,6 +131,162 @@ fn test_verify_user() {
 
     let verified_user = dispatcher.is_verified(account_id);
     assert(verified_user, 'Not Verified');
+}
+
+#[test]
+fn test_update_user() {
+    let (contract_address, _) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call create_user
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    // Validate that the claim ID is correctly incremented
+    assert(account_id == 0, 'account_id should start from 0');
+
+    // Retrieve the user to verify it was stored correctly
+    let user = dispatcher.retrieve_user_profile(account_id);
+    assert(user.username == username, 'username mismatch');
+    assert(user.role == role, 'role mismatch');
+    assert(user.rank == rank, 'rank mismatch');
+    assert(user.metadata == metadata, 'metadata mismatch');
+    assert(!user.verified, 'already verified');
+
+    let updated_wallet_Address = contract_address_const::<'user'>();
+    let updated_username: felt252 = 'John';
+    let updated_metadata: felt252 = 'john is a man now';
+    let updated_role = Role::READER;
+    let updated_rank = Rank::BEGINNER;
+    // Update user data
+    dispatcher
+        .update_user_profile(
+            account_id,
+            updated_username,
+            updated_wallet_Address,
+            updated_role,
+            updated_rank,
+            updated_metadata,
+        );
+
+    // Retrieve the updated user to verify it was stored correctly
+    let updated_user = dispatcher.retrieve_user_profile(account_id);
+    assert(updated_user.username == username, 'username mismatch');
+    assert(updated_user.role == role, 'role mismatch');
+    assert(updated_user.rank == rank, 'rank mismatch');
+    assert(updated_user.metadata == updated_metadata, 'metadata mismatch');
+    assert(!updated_user.verified, 'already verified');
+}
+
+
+#[test]
+fn test_deactivate_user() {
+    let (contract_address, _) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call create_user
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    // Validate that the claim ID is correctly incremented
+    assert(account_id == 0, 'account_id should start from 0');
+
+    // Retrieve the user to verify it was stored correctly
+    let user = dispatcher.retrieve_user_profile(account_id);
+    assert(user.username == username, 'username mismatch');
+    assert(user.role == role, 'role mismatch');
+    assert(user.rank == rank, 'rank mismatch');
+    assert(user.metadata == metadata, 'metadata mismatch');
+    assert(!user.verified, 'already verified');
+
+    dispatcher.deactivate_profile(account_id);
+    let user_deactivated = dispatcher.retrieve_user_profile(account_id);
+    assert(user_deactivated.status == Status::DEACTIVATED, 'User should be deactivated');
+}
+
+#[test]
+#[should_panic]
+fn test_deactivate_user_should_panic_if_diffrent_Address() {
+    let (contract_address, _) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call create_user
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    // Validate that the claim ID is correctly incremented
+    assert(account_id == 0, 'account_id should start from 0');
+
+    // Retrieve the user to verify it was stored correctly
+    let user = dispatcher.retrieve_user_profile(account_id);
+    assert(user.username == username, 'username mismatch');
+    assert(user.role == role, 'role mismatch');
+    assert(user.rank == rank, 'rank mismatch');
+    assert(user.metadata == metadata, 'metadata mismatch');
+    assert(!user.verified, 'already verified');
+
+    start_cheat_caller_address(contract_address, contract_address_const::<'0x123'>());
+    dispatcher.deactivate_profile(account_id);
+    assert(user.status == Status::DEACTIVATED, 'User should be deactivated');
+}
+
+
+#[test]
+#[should_panic]
+fn test_update_user_should_panic_when_address_is_0() {
+    let (contract_address, _) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call create_user
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    // Validate that the claim ID is correctly incremented
+    assert(account_id == 0, 'account_id should start from 0');
+
+    // Retrieve the user to verify it was stored correctly
+    let user = dispatcher.retrieve_user_profile(account_id);
+    assert(user.username == username, 'username mismatch');
+    assert(user.role == role, 'role mismatch');
+    assert(user.rank == rank, 'rank mismatch');
+    assert(user.metadata == metadata, 'metadata mismatch');
+    assert(!user.verified, 'already verified');
+
+    let updated_wallet_Address = contract_address_const::<0>();
+    let updated_username: felt252 = 'John';
+    let updated_metadata: felt252 = 'john is a man now';
+    let updated_role = Role::READER;
+    let updated_rank = Rank::BEGINNER;
+    // Update user data
+    dispatcher
+        .update_user_profile(
+            account_id,
+            updated_username,
+            updated_wallet_Address,
+            updated_role,
+            updated_rank,
+            updated_metadata,
+        );
 }
 
 #[test]

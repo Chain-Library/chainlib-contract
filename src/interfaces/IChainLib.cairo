@@ -29,6 +29,18 @@ pub trait IChainLib<TContractState> {
 
     fn retrieve_user_profile(ref self: TContractState, user_id: u256) -> User;
 
+    fn update_user_profile(
+        ref self: TContractState,
+        id: u256,
+        username: felt252,
+        wallet_address: ContractAddress,
+        role: Role,
+        rank: Rank,
+        metadata: felt252,
+    );
+
+    fn deactivate_profile(ref self: TContractState, user_id: u256) -> bool;
+
     fn getAdmin(self: @TContractState) -> ContractAddress;
 
     fn is_verified(ref self: TContractState, user_id: u256) -> bool;

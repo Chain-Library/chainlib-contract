@@ -21,6 +21,14 @@ pub struct User {
     pub rank: Rank,
     pub verified: bool,
     pub metadata: felt252,
+    pub status: Status,
+}
+
+#[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
+pub enum Status {
+    #[default]
+    ACTIVE,
+    DEACTIVATED,
 }
 
 // Permission flags using bit flags for flexibility
