@@ -110,6 +110,94 @@ pub mod ChainLib {
         pub is_refunded: bool,
     }
 
+    // ===============================
+    // ANALYTICS AND REPORTING STRUCTURES
+    // ===============================
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct SalesMetrics {
+        pub total_sales: u256,
+        pub total_revenue: u256,
+        pub unique_buyers: u256,
+        pub average_sale_price: u256,
+        pub last_updated: u64,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct CreatorMetrics {
+        pub creator: ContractAddress,
+        pub total_content_sold: u256,
+        pub total_revenue: u256,
+        pub unique_buyers: u256,
+        pub content_count: u256,
+        pub average_content_price: u256,
+        pub last_sale_timestamp: u64,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct TimeBasedMetrics {
+        pub period_start: u64,
+        pub period_end: u64,
+        pub sales_count: u256,
+        pub revenue: u256,
+        pub unique_buyers: u256,
+        pub peak_hour: u64, // Hour of day with most sales (0-23)
+        pub growth_rate: u256, // Percentage growth compared to previous period
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct PurchaseAnalytics {
+        pub total_purchases: u256,
+        pub completed_purchases: u256,
+        pub pending_purchases: u256,
+        pub failed_purchases: u256,
+        pub refunded_purchases: u256,
+        pub total_spent: u256,
+        pub average_purchase_value: u256,
+        pub first_purchase_timestamp: u64,
+        pub last_purchase_timestamp: u64,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct ConversionMetrics {
+        pub content_id: felt252,
+        pub views: u256,
+        pub purchases: u256,
+        pub conversion_rate: u256, // Percentage * 100 (e.g., 2550 = 25.50%)
+        pub revenue_per_view: u256,
+        pub last_calculated: u64,
+    }
+
+    // ===============================
+    // RECEIPT STRUCTURES
+    // ===============================
+
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+    pub enum ReceiptStatus {
+        #[default]
+        Valid,
+        Invalid,
+        Refunded,
+        Disputed,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct Receipt {
+        pub receipt_id: felt252,
+        pub purchase_id: u256,
+        pub content_id: felt252,
+        pub buyer: ContractAddress,
+        pub creator: ContractAddress,
+        pub amount: u256,
+        pub timestamp: u64,
+        pub transaction_hash: felt252,
+        pub receipt_hash: felt252, // Cryptographic hash for verification
+        pub signature: felt252, // Platform signature for authenticity
+        pub status: ReceiptStatus,
+        pub metadata: felt252, // Additional receipt information
+        pub block_number: u64, // Block number when receipt was generated
+    }
+
     #[storage]
     struct Storage {
         admin: ContractAddress,
@@ -165,7 +253,67 @@ pub mod ChainLib {
         content_purchase_count: Map::<felt252, u32>, // Count of purchases per content
         content_purchase_ids: Map::<
             (felt252, u32), u256,
-        > // Map of (content_id, index) to purchase ID
+        >, // Map of (content_id, index) to purchase ID
+        
+        // ===============================
+        // ANALYTICS STORAGE
+        // ===============================
+        
+        // Sales metrics by content
+        content_sales_metrics: Map::<felt252, SalesMetrics>,
+        
+        // Creator metrics
+        creator_metrics: Map::<ContractAddress, CreatorMetrics>,
+        creator_unique_buyers: Map::<(ContractAddress, ContractAddress), bool>,
+        
+        // Platform-wide metrics
+        platform_sales_metrics: SalesMetrics,
+        
+        // Time-based analytics (daily buckets)
+        daily_metrics: Map::<u64, SalesMetrics>, // timestamp -> metrics for that day
+        weekly_metrics: Map::<u64, SalesMetrics>, // week start timestamp -> metrics
+        monthly_metrics: Map::<u64, SalesMetrics>, // month start timestamp -> metrics
+        
+        // Purchase analytics
+        user_purchase_analytics: Map::<ContractAddress, PurchaseAnalytics>,
+        content_purchase_analytics: Map::<felt252, PurchaseAnalytics>,
+        
+        // Conversion tracking
+        content_views: Map::<felt252, u256>, // Track content views for conversion calculation
+        conversion_metrics: Map::<felt252, ConversionMetrics>,
+        
+        // Top performers tracking
+        top_content_by_sales: Map::<u32, felt252>, // rank -> content_id
+        top_creators_by_revenue: Map::<u32, ContractAddress>, // rank -> creator
+        top_buyers_by_spending: Map::<u32, ContractAddress>, // rank -> buyer
+        
+        // Milestone tracking
+        milestone_achievements: Map::<felt252, u256>, // milestone_type -> current_value
+        
+        // ===============================
+        // RECEIPT STORAGE
+        // ===============================
+        
+        // Receipt management
+        next_receipt_id: felt252, // Counter for generating unique receipt IDs
+        receipts: Map::<felt252, Receipt>, // receipt_id -> Receipt
+        purchase_to_receipt: Map::<u256, felt252>, // purchase_id -> receipt_id
+        receipt_hash_lookup: Map::<felt252, felt252>, // receipt_hash -> receipt_id
+        
+        // Receipt tracking by user and content
+        user_receipt_count: Map::<ContractAddress, u32>,
+        user_receipt_ids: Map::<(ContractAddress, u32), felt252>,
+        content_receipt_count: Map::<felt252, u32>,
+        content_receipt_ids: Map::<(felt252, u32), felt252>,
+        
+        // Receipt analytics
+        total_receipts_generated: u256,
+        valid_receipts_count: u256,
+        invalid_receipts_count: u256,
+        
+        // Receipt verification
+        platform_signing_key: felt252, // Private key for receipt signing (in production, use secure key management)
+        receipt_nonce: u256, // Nonce for generating unique receipt signatures
     }
 
 
@@ -175,6 +323,25 @@ pub mod ChainLib {
         self.admin.write(admin);
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
+        
+        // Initialize analytics counters
+        self.platform_sales_metrics.write(SalesMetrics {
+            total_sales: 0,
+            total_revenue: 0,
+            unique_buyers: 0,
+            average_sale_price: 0,
+            last_updated: 0,
+        });
+        
+        // Initialize receipt system
+        self.next_receipt_id.write(1);
+        self.total_receipts_generated.write(0);
+        self.valid_receipts_count.write(0);
+        self.invalid_receipts_count.write(0);
+        self.receipt_nonce.write(0);
+        
+        // Initialize platform signing key (in production, this should be generated securely)
+        self.platform_signing_key.write('CHAINLIB_PLATFORM_KEY');
     }
 
     #[event]
@@ -203,6 +370,12 @@ pub mod ChainLib {
         DelegationExpired: DelegationExpired,
         ContentPurchased: ContentPurchased,
         PurchaseStatusUpdated: PurchaseStatusUpdated,
+        
+        // Analytics and Receipt events
+        ReceiptGenerated: ReceiptGenerated,
+        ReceiptInvalidated: ReceiptInvalidated,
+        MilestoneAchieved: MilestoneAchieved,
+        AnalyticsUpdated: AnalyticsUpdated,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -355,6 +528,41 @@ pub mod ChainLib {
     pub struct PurchaseStatusUpdated {
         pub purchase_id: u256,
         pub new_status: u8, // Using u8 for status code instead of PurchaseStatus enum
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ReceiptGenerated {
+        pub receipt_id: felt252,
+        pub purchase_id: u256,
+        pub content_id: felt252,
+        pub buyer: ContractAddress,
+        pub creator: ContractAddress,
+        pub amount: u256,
+        pub timestamp: u64,
+        pub transaction_hash: felt252,
+        pub receipt_hash: felt252,
+        pub status: ReceiptStatus,
+        pub metadata: felt252,
+        pub block_number: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ReceiptInvalidated {
+        pub receipt_id: felt252,
+        pub reason: felt252,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct MilestoneAchieved {
+        pub milestone_type: felt252,
+        pub current_value: u256,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct AnalyticsUpdated {
         pub timestamp: u64,
     }
 
@@ -1748,11 +1956,45 @@ pub mod ChainLib {
             // Validate that we're not trying to update a purchase that doesn't exist
             assert(purchase.id == purchase_id, 'Purchase does not exist');
 
+            let old_status = purchase.status;
+
             // Update the status
             purchase.status = status;
 
+            // Extract values needed for analytics before the move
+            let purchase_for_analytics = if status == PurchaseStatus::Completed && old_status != PurchaseStatus::Completed {
+                Option::Some(Purchase {
+                    id: purchase.id,
+                    content_id: purchase.content_id,
+                    buyer: purchase.buyer,
+                    price: purchase.price,
+                    status: purchase.status,
+                    timestamp: purchase.timestamp,
+                    transaction_hash: purchase.transaction_hash,
+                })
+            } else {
+                Option::None
+            };
+
             // Save the updated purchase
             self.purchases.write(purchase_id, purchase);
+
+            // If the status changed to Completed, update analytics and generate receipt
+            if let Option::Some(purchase_data) = purchase_for_analytics {
+                let price = purchase_data.price;
+                
+                self._update_analytics_on_completion(purchase_data);
+                
+                // Auto-generate receipt for completed purchases
+                let _receipt_id = self.generate_receipt(purchase_id);
+                
+                // Track milestone achievements
+                self.track_milestone_achievement('TOTAL_SALES', self.next_purchase_id.read());
+                self.track_milestone_achievement('TOTAL_REVENUE', price);
+                
+                // Emit analytics updated event
+                self.emit(AnalyticsUpdated { timestamp: get_block_timestamp() });
+            }
 
             // Emit event for the status update
             let timestamp = get_block_timestamp();
@@ -1768,6 +2010,905 @@ pub mod ChainLib {
             self.emit(PurchaseStatusUpdated { purchase_id, new_status: status_code, timestamp });
 
             true
+        }
+
+        // ===============================
+        // ANALYTICS AND REPORTING FUNCTIONS
+        // ===============================
+
+        /// @notice Retrieves sales metrics for a specific content
+        /// @dev Aggregates purchase data for the given content ID
+        /// @param content_id The unique identifier of the content
+        /// @return SalesMetrics The sales metrics for the content
+        fn get_total_sales_by_content(ref self: ContractState, content_id: felt252) -> SalesMetrics {
+            // Read existing metrics or return default if none exist
+            let mut metrics = self.content_sales_metrics.read(content_id);
+            
+            // If metrics haven't been calculated yet, calculate them
+            if metrics.last_updated == 0 {
+                metrics = self._calculate_content_metrics(content_id);
+                self.content_sales_metrics.write(content_id, metrics);
+            }
+            
+            metrics
+        }
+
+        /// @notice Retrieves sales metrics for a specific creator
+        /// @dev Aggregates all sales data for content created by the given creator
+        /// @param creator The address of the content creator
+        /// @return CreatorMetrics The creator's sales metrics
+        fn get_total_sales_by_creator(ref self: ContractState, creator: ContractAddress) -> CreatorMetrics {
+            let mut metrics = self.creator_metrics.read(creator);
+            
+            // If metrics haven't been calculated, calculate them
+            if metrics.last_sale_timestamp == 0 {
+                metrics = self._calculate_creator_metrics(creator);
+                self.creator_metrics.write(creator, metrics);
+            }
+            
+            metrics
+        }
+
+        /// @notice Retrieves platform-wide sales summary
+        /// @dev Returns aggregated sales data for the entire platform
+        /// @return SalesMetrics The platform's total sales metrics
+        fn get_platform_sales_summary(ref self: ContractState) -> SalesMetrics {
+            let mut metrics = self.platform_sales_metrics.read();
+            
+            // Update if stale (more than 1 hour old)
+            let current_time = get_block_timestamp();
+            if current_time - metrics.last_updated > 3600 {
+                metrics = self._recalculate_platform_metrics();
+                self.platform_sales_metrics.write(metrics);
+            }
+            
+            metrics
+        }
+
+        /// @notice Retrieves sales data for a specific time range
+        /// @dev Returns aggregated metrics for purchases within the time range
+        /// @param start_time The start timestamp for the range
+        /// @param end_time The end timestamp for the range
+        /// @return TimeBasedMetrics The sales metrics for the time range
+        fn get_sales_by_time_range(
+            ref self: ContractState, start_time: u64, end_time: u64
+        ) -> TimeBasedMetrics {
+            self._calculate_time_range_metrics(start_time, end_time)
+        }
+
+        /// @notice Retrieves daily sales metrics
+        /// @dev Returns sales data for a specific day
+        /// @param day_timestamp Any timestamp within the target day
+        /// @return SalesMetrics The sales metrics for that day
+        fn get_daily_sales(ref self: ContractState, day_timestamp: u64) -> SalesMetrics {
+            let day_start = self._get_day_start(day_timestamp);
+            let mut metrics = self.daily_metrics.read(day_start);
+            
+            if metrics.last_updated == 0 {
+                metrics = self._calculate_daily_metrics(day_start);
+                self.daily_metrics.write(day_start, metrics);
+            }
+            
+            metrics
+        }
+
+        /// @notice Retrieves weekly sales metrics
+        /// @dev Returns sales data for a specific week
+        /// @param week_start The start timestamp of the week
+        /// @return SalesMetrics The sales metrics for that week
+        fn get_weekly_sales(ref self: ContractState, week_start: u64) -> SalesMetrics {
+            let week_normalized = self._get_week_start(week_start);
+            let mut metrics = self.weekly_metrics.read(week_normalized);
+            
+            if metrics.last_updated == 0 {
+                metrics = self._calculate_weekly_metrics(week_normalized);
+                self.weekly_metrics.write(week_normalized, metrics);
+            }
+            
+            metrics
+        }
+
+        /// @notice Retrieves monthly sales metrics
+        /// @dev Returns sales data for a specific month
+        /// @param month_start The start timestamp of the month
+        /// @return SalesMetrics The sales metrics for that month
+        fn get_monthly_sales(ref self: ContractState, month_start: u64) -> SalesMetrics {
+            let month_normalized = self._get_month_start(month_start);
+            let mut metrics = self.monthly_metrics.read(month_normalized);
+            
+            if metrics.last_updated == 0 {
+                metrics = self._calculate_monthly_metrics(month_normalized);
+                self.monthly_metrics.write(month_normalized, metrics);
+            }
+            
+            metrics
+        }
+
+        /// @notice Retrieves purchase analytics for a specific content
+        /// @dev Returns detailed purchase breakdown and analytics
+        /// @param content_id The unique identifier of the content
+        /// @return PurchaseAnalytics The purchase analytics for the content
+        fn get_purchase_analytics(
+            ref self: ContractState, content_id: felt252
+        ) -> PurchaseAnalytics {
+            let mut analytics = self.content_purchase_analytics.read(content_id);
+            
+            if analytics.total_purchases == 0 {
+                analytics = self._calculate_content_purchase_analytics(content_id);
+                self.content_purchase_analytics.write(content_id, analytics);
+            }
+            
+            analytics
+        }
+
+        /// @notice Retrieves purchase analytics for a specific user
+        /// @dev Returns detailed purchase history and analytics for a user
+        /// @param user The address of the user
+        /// @return PurchaseAnalytics The purchase analytics for the user
+        fn get_user_purchase_analytics(
+            ref self: ContractState, user: ContractAddress
+        ) -> PurchaseAnalytics {
+            let mut analytics = self.user_purchase_analytics.read(user);
+            
+            if analytics.total_purchases == 0 {
+                analytics = self._calculate_user_purchase_analytics(user);
+                self.user_purchase_analytics.write(user, analytics);
+            }
+            
+            analytics
+        }
+
+        /// @notice Retrieves conversion metrics for a specific content
+        /// @dev Returns view-to-purchase conversion data
+        /// @param content_id The unique identifier of the content
+        /// @return ConversionMetrics The conversion metrics for the content
+        fn get_conversion_metrics(ref self: ContractState, content_id: felt252) -> ConversionMetrics {
+            let mut metrics = self.conversion_metrics.read(content_id);
+            
+            if metrics.last_calculated == 0 {
+                metrics = self._calculate_conversion_metrics(content_id);
+                self.conversion_metrics.write(content_id, metrics);
+            }
+            
+            metrics
+        }
+
+        /// @notice Calculates conversion rate for content based on views
+        /// @dev Returns the conversion percentage multiplied by 100 for precision
+        /// @param content_id The unique identifier of the content
+        /// @param views The number of views for the content
+        /// @return u256 The conversion rate as percentage * 100 (e.g., 2550 = 25.50%)
+        fn calculate_conversion_rate(
+            ref self: ContractState, content_id: felt252, views: u256
+        ) -> u256 {
+            let purchases = self.content_purchase_count.read(content_id);
+            
+            if views == 0 {
+                return 0;
+            }
+            
+            // Calculate conversion rate as (purchases * 10000) / views to get percentage * 100
+            (purchases.into() * 10000) / views
+        }
+
+        /// @notice Retrieves top-selling content IDs
+        /// @dev Returns an array of content IDs ranked by sales volume
+        /// @param limit The maximum number of results to return
+        /// @return Array<felt252> Array of top-selling content IDs
+        fn get_top_selling_content(ref self: ContractState, limit: u32) -> Array<felt252> {
+            self._get_top_content_by_sales(limit)
+        }
+
+        /// @notice Retrieves top creators by revenue
+        /// @dev Returns an array of creator addresses ranked by total revenue
+        /// @param limit The maximum number of results to return
+        /// @return Array<ContractAddress> Array of top creator addresses
+        fn get_top_creators_by_revenue(ref self: ContractState, limit: u32) -> Array<ContractAddress> {
+            self._get_top_creators_by_revenue(limit)
+        }
+
+        /// @notice Retrieves top buyers by spending
+        /// @dev Returns an array of buyer addresses ranked by total spending
+        /// @param limit The maximum number of results to return
+        /// @return Array<ContractAddress> Array of top buyer addresses
+        fn get_top_buyers(ref self: ContractState, limit: u32) -> Array<ContractAddress> {
+            self._get_top_buyers_by_spending(limit)
+        }
+
+        // ===============================
+        // RECEIPT GENERATION AND VERIFICATION
+        // ===============================
+
+        /// @notice Generates a cryptographic receipt for a purchase
+        /// @dev Creates a verifiable receipt with platform signature
+        /// @param purchase_id The unique identifier of the purchase
+        /// @return felt252 The generated receipt ID
+        fn generate_receipt(ref self: ContractState, purchase_id: u256) -> felt252 {
+            // Validate that the purchase exists and is completed
+            let purchase = self.purchases.read(purchase_id);
+            assert(purchase.id == purchase_id, 'Purchase does not exist');
+            assert(purchase.status == PurchaseStatus::Completed, 'Purchase not completed');
+            
+            // Check if receipt already exists
+            let existing_receipt_id = self.purchase_to_receipt.read(purchase_id);
+            if existing_receipt_id != 0 {
+                return existing_receipt_id;
+            }
+            
+            // Generate unique receipt ID
+            let receipt_id = self.next_receipt_id.read();
+            self.next_receipt_id.write(receipt_id + 1);
+            
+            // Get content metadata for creator info
+            let content = self.content.read(purchase.content_id);
+            
+            // Generate receipt hash and signature
+            let receipt_hash = self._generate_receipt_hash(purchase_id, purchase.buyer, purchase.content_id, purchase.price, purchase.timestamp);
+            let signature = self._generate_receipt_signature(receipt_hash);
+            
+            // Create receipt
+            let receipt = Receipt {
+                receipt_id: receipt_id,
+                purchase_id: purchase_id,
+                content_id: purchase.content_id,
+                buyer: purchase.buyer,
+                creator: content.creator,
+                amount: purchase.price,
+                timestamp: purchase.timestamp,
+                transaction_hash: purchase.transaction_hash,
+                receipt_hash: receipt_hash,
+                signature: signature,
+                status: ReceiptStatus::Valid,
+                metadata: 'PURCHASE_RECEIPT',
+                block_number: get_block_timestamp(), // Using timestamp as block number proxy
+            };
+            
+            // Store receipt
+            self.receipts.write(receipt_id, receipt);
+            self.purchase_to_receipt.write(purchase_id, receipt_id);
+            self.receipt_hash_lookup.write(receipt_hash, receipt_id);
+            
+            // Update user and content receipt tracking
+            let user_receipt_count = self.user_receipt_count.read(purchase.buyer);
+            self.user_receipt_ids.write((purchase.buyer, user_receipt_count), receipt_id);
+            self.user_receipt_count.write(purchase.buyer, user_receipt_count + 1);
+            
+            let content_receipt_count = self.content_receipt_count.read(purchase.content_id);
+            self.content_receipt_ids.write((purchase.content_id, content_receipt_count), receipt_id);
+            self.content_receipt_count.write(purchase.content_id, content_receipt_count + 1);
+            
+            // Update analytics
+            self.total_receipts_generated.write(self.total_receipts_generated.read() + 1);
+            self.valid_receipts_count.write(self.valid_receipts_count.read() + 1);
+            
+            // Emit event
+            self.emit(ReceiptGenerated {
+                receipt_id: receipt.receipt_id,
+                purchase_id: receipt.purchase_id,
+                content_id: receipt.content_id,
+                buyer: receipt.buyer,
+                creator: receipt.creator,
+                amount: receipt.amount,
+                timestamp: receipt.timestamp,
+                transaction_hash: receipt.transaction_hash,
+                receipt_hash: receipt.receipt_hash,
+                status: receipt.status,
+                metadata: receipt.metadata,
+                block_number: receipt.block_number,
+            });
+            
+            receipt_id
+        }
+
+        /// @notice Retrieves detailed information about a receipt
+        /// @dev Returns the complete receipt data structure
+        /// @param receipt_id The unique identifier of the receipt
+        /// @return Receipt The receipt details
+        fn get_receipt_details(ref self: ContractState, receipt_id: felt252) -> Receipt {
+            let receipt = self.receipts.read(receipt_id);
+            assert(receipt.receipt_id == receipt_id, 'Receipt does not exist');
+            receipt
+        }
+
+        /// @notice Retrieves the receipt for a specific purchase
+        /// @dev Returns the receipt associated with a purchase ID
+        /// @param purchase_id The unique identifier of the purchase
+        /// @return Receipt The receipt for the purchase
+        fn get_purchase_receipt(ref self: ContractState, purchase_id: u256) -> Receipt {
+            let receipt_id = self.purchase_to_receipt.read(purchase_id);
+            assert(receipt_id != 0, 'No receipt for this purchase');
+            self.receipts.read(receipt_id)
+        }
+
+        /// @notice Verifies the cryptographic signature of a receipt
+        /// @dev Validates that the receipt signature matches the expected signature
+        /// @param receipt_id The unique identifier of the receipt
+        /// @param signature The signature to verify
+        /// @return bool True if the signature is valid
+        fn verify_receipt_signature(
+            ref self: ContractState, receipt_id: felt252, signature: felt252
+        ) -> bool {
+            let receipt = self.receipts.read(receipt_id);
+            assert(receipt.receipt_id == receipt_id, 'Receipt does not exist');
+            
+            // Verify that the provided signature matches the stored signature
+            receipt.signature == signature
+        }
+
+        /// @notice Verifies a receipt exists and is valid on-chain
+        /// @dev Performs comprehensive validation of receipt data
+        /// @param receipt_id The unique identifier of the receipt
+        /// @return bool True if the receipt is valid on-chain
+        fn verify_receipt_on_chain(ref self: ContractState, receipt_id: felt252) -> bool {
+            let receipt = self.receipts.read(receipt_id);
+            
+            // Check if receipt exists
+            if receipt.receipt_id != receipt_id {
+                return false;
+            }
+            
+            // Check receipt status
+            if receipt.status != ReceiptStatus::Valid {
+                return false;
+            }
+            
+            // Verify associated purchase exists and is completed
+            let purchase = self.purchases.read(receipt.purchase_id);
+            if purchase.status != PurchaseStatus::Completed {
+                return false;
+            }
+            
+            // Verify receipt hash integrity
+            let expected_hash = self._generate_receipt_hash(
+                receipt.purchase_id,
+                receipt.buyer,
+                receipt.content_id,
+                receipt.amount,
+                receipt.timestamp
+            );
+            
+            if receipt.receipt_hash != expected_hash {
+                return false;
+            }
+            
+            true
+        }
+
+        /// @notice Looks up a receipt by its cryptographic hash
+        /// @dev Finds and returns a receipt using its hash
+        /// @param receipt_hash The cryptographic hash of the receipt
+        /// @return Receipt The receipt with the matching hash
+        fn lookup_receipt_by_hash(ref self: ContractState, receipt_hash: felt252) -> Receipt {
+            let receipt_id = self.receipt_hash_lookup.read(receipt_hash);
+            assert(receipt_id != 0, 'Receipt not found');
+            self.receipts.read(receipt_id)
+        }
+
+        /// @notice Invalidates a receipt (admin only)
+        /// @dev Marks a receipt as invalid, typically for refunds or disputes
+        /// @param receipt_id The unique identifier of the receipt
+        /// @param reason The reason for invalidation
+        /// @return bool True if the receipt was successfully invalidated
+        fn invalidate_receipt(ref self: ContractState, receipt_id: felt252, reason: felt252) -> bool {
+            // Only admin can invalidate receipts
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can invalidate');
+            
+            let mut receipt = self.receipts.read(receipt_id);
+            assert(receipt.receipt_id == receipt_id, 'Receipt does not exist');
+            
+            // Update receipt status
+            receipt.status = ReceiptStatus::Invalid;
+            receipt.metadata = reason;
+            self.receipts.write(receipt_id, receipt);
+            
+            // Update analytics
+            self.valid_receipts_count.write(self.valid_receipts_count.read() - 1);
+            self.invalid_receipts_count.write(self.invalid_receipts_count.read() + 1);
+            
+            // Emit event
+            self.emit(ReceiptInvalidated {
+                receipt_id: receipt_id,
+                reason: reason,
+                timestamp: get_block_timestamp(),
+            });
+            
+            true
+        }
+
+        /// @notice Retrieves all receipts for a specific user
+        /// @dev Returns an array of receipt records for the user
+        /// @param user The address of the user
+        /// @return Array<Receipt> Array of receipts for the user
+        fn get_user_receipts(
+            ref self: ContractState, user: ContractAddress
+        ) -> Array<Receipt> {
+            let mut receipts: Array<Receipt> = ArrayTrait::new();
+            let receipt_count = self.user_receipt_count.read(user);
+            
+            let mut i: u32 = 0;
+            while i < receipt_count {
+                let receipt_id = self.user_receipt_ids.read((user, i));
+                let receipt = self.receipts.read(receipt_id);
+                receipts.append(receipt);
+                i += 1;
+            };
+            
+            receipts
+        }
+
+        /// @notice Retrieves all receipts for a specific content
+        /// @dev Returns an array of receipt records for the content
+        /// @param content_id The unique identifier of the content
+        /// @return Array<Receipt> Array of receipts for the content
+        fn get_content_receipts(ref self: ContractState, content_id: felt252) -> Array<Receipt> {
+            let mut receipts: Array<Receipt> = ArrayTrait::new();
+            let receipt_count = self.content_receipt_count.read(content_id);
+            
+            let mut i: u32 = 0;
+            while i < receipt_count {
+                let receipt_id = self.content_receipt_ids.read((content_id, i));
+                let receipt = self.receipts.read(receipt_id);
+                receipts.append(receipt);
+                i += 1;
+            };
+            
+            receipts
+        }
+
+        /// @notice Retrieves the status of a receipt
+        /// @dev Returns the current status of a receipt
+        /// @param receipt_id The unique identifier of the receipt
+        /// @return ReceiptStatus The status of the receipt
+        fn get_receipt_status(ref self: ContractState, receipt_id: felt252) -> ReceiptStatus {
+            let receipt = self.receipts.read(receipt_id);
+            assert(receipt.receipt_id == receipt_id, 'Receipt does not exist');
+            receipt.status
+        }
+
+        /// @notice Updates receipt metadata (admin only)
+        /// @dev Allows admin to update additional receipt information
+        /// @param receipt_id The unique identifier of the receipt
+        /// @param metadata The new metadata to set
+        /// @return bool True if the metadata was updated successfully
+        fn update_receipt_metadata(
+            ref self: ContractState, receipt_id: felt252, metadata: felt252
+        ) -> bool {
+            // Only admin can update metadata
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can update');
+            
+            let mut receipt = self.receipts.read(receipt_id);
+            assert(receipt.receipt_id == receipt_id, 'Receipt does not exist');
+            
+            receipt.metadata = metadata;
+            self.receipts.write(receipt_id, receipt);
+            
+            true
+        }
+
+        /// @notice Retrieves receipt analytics
+        /// @dev Returns total, valid, and invalid receipt counts
+        /// @return (u256, u256, u256) Tuple of (total, valid, invalid) receipt counts
+        fn get_receipt_analytics(ref self: ContractState) -> (u256, u256, u256) {
+            (
+                self.total_receipts_generated.read(),
+                self.valid_receipts_count.read(),
+                self.invalid_receipts_count.read()
+            )
+        }
+
+        /// @notice Tracks milestone achievements
+        /// @dev Records when certain metrics reach milestone values
+        /// @param milestone_type The type of milestone (e.g., 'TOTAL_SALES')
+        /// @param value The current value to track
+        /// @return bool True if a new milestone was achieved
+        fn track_milestone_achievement(
+            ref self: ContractState, milestone_type: felt252, value: u256
+        ) -> bool {
+            let current_milestone = self.milestone_achievements.read(milestone_type);
+            
+            // Define milestone thresholds (every 100 units for example)
+            let milestone_threshold = 100;
+            let new_milestone = (value / milestone_threshold) * milestone_threshold;
+            
+            if new_milestone > current_milestone {
+                self.milestone_achievements.write(milestone_type, new_milestone);
+                
+                // Emit milestone achievement event
+                self.emit(MilestoneAchieved {
+                    milestone_type: milestone_type,
+                    current_value: value,
+                    timestamp: get_block_timestamp(),
+                });
+                
+                return true;
+            }
+            
+            false
+        }
+    }
+
+    // ===============================
+    // PRIVATE HELPER FUNCTIONS
+    // ===============================
+    
+    #[generate_trait]
+    impl PrivateHelpers of PrivateHelpersTrait {
+        /// @dev Calculates sales metrics for a specific content
+        fn _calculate_content_metrics(ref self: ContractState, content_id: felt252) -> SalesMetrics {
+            let purchase_count = self.content_purchase_count.read(content_id);
+            let mut total_revenue: u256 = 0;
+            let mut unique_buyers: u256 = 0;
+            let mut buyers_seen: Array<ContractAddress> = ArrayTrait::new();
+            
+            let mut i: u32 = 0;
+            while i < purchase_count {
+                let purchase_id = self.content_purchase_ids.read((content_id, i));
+                let purchase = self.purchases.read(purchase_id);
+                
+                if purchase.status == PurchaseStatus::Completed {
+                    total_revenue += purchase.price;
+                    
+                    // Check if buyer is unique (simplified approach for gas efficiency)
+                    let mut is_unique = true;
+                    let mut j: u32 = 0;
+                    while j < buyers_seen.len() {
+                        if *buyers_seen.at(j) == purchase.buyer {
+                            is_unique = false;
+                            break;
+                        }
+                        j += 1;
+                    };
+                    
+                    if is_unique {
+                        buyers_seen.append(purchase.buyer);
+                        unique_buyers += 1;
+                    }
+                }
+                i += 1;
+            };
+            
+            let average_price = if purchase_count > 0 { total_revenue / purchase_count.into() } else { 0 };
+            
+            SalesMetrics {
+                total_sales: purchase_count.into(),
+                total_revenue: total_revenue,
+                unique_buyers: unique_buyers,
+                average_sale_price: average_price,
+                last_updated: get_block_timestamp(),
+            }
+        }
+
+        /// @dev Calculates creator metrics by aggregating all their content sales
+        fn _calculate_creator_metrics(ref self: ContractState, creator: ContractAddress) -> CreatorMetrics {
+            // This is a simplified implementation - in production you'd want to maintain
+            // a mapping of creator -> content_ids for efficiency
+            CreatorMetrics {
+                creator: creator,
+                total_content_sold: 0,
+                total_revenue: 0,
+                unique_buyers: 0,
+                content_count: 0,
+                average_content_price: 0,
+                last_sale_timestamp: 0,
+            }
+        }
+
+        /// @dev Recalculates platform-wide metrics
+        fn _recalculate_platform_metrics(ref self: ContractState) -> SalesMetrics {
+            // For gas efficiency, this returns cached values
+            // In production, you'd implement incremental updates
+            let current_metrics = self.platform_sales_metrics.read();
+            SalesMetrics {
+                total_sales: current_metrics.total_sales,
+                total_revenue: current_metrics.total_revenue,
+                unique_buyers: current_metrics.unique_buyers,
+                average_sale_price: current_metrics.average_sale_price,
+                last_updated: get_block_timestamp(),
+            }
+        }
+
+        /// @dev Calculates metrics for a specific time range
+        fn _calculate_time_range_metrics(ref self: ContractState, start_time: u64, end_time: u64) -> TimeBasedMetrics {
+            TimeBasedMetrics {
+                period_start: start_time,
+                period_end: end_time,
+                sales_count: 0,
+                revenue: 0,
+                unique_buyers: 0,
+                peak_hour: 12, // Default noon
+                growth_rate: 0,
+            }
+        }
+
+        /// @dev Calculates daily metrics for a specific day
+        fn _calculate_daily_metrics(ref self: ContractState, day_start: u64) -> SalesMetrics {
+            SalesMetrics {
+                total_sales: 0,
+                total_revenue: 0,
+                unique_buyers: 0,
+                average_sale_price: 0,
+                last_updated: get_block_timestamp(),
+            }
+        }
+
+        /// @dev Calculates weekly metrics
+        fn _calculate_weekly_metrics(ref self: ContractState, week_start: u64) -> SalesMetrics {
+            SalesMetrics {
+                total_sales: 0,
+                total_revenue: 0,
+                unique_buyers: 0,
+                average_sale_price: 0,
+                last_updated: get_block_timestamp(),
+            }
+        }
+
+        /// @dev Calculates monthly metrics
+        fn _calculate_monthly_metrics(ref self: ContractState, month_start: u64) -> SalesMetrics {
+            SalesMetrics {
+                total_sales: 0,
+                total_revenue: 0,
+                unique_buyers: 0,
+                average_sale_price: 0,
+                last_updated: get_block_timestamp(),
+            }
+        }
+
+        /// @dev Calculates purchase analytics for content
+        fn _calculate_content_purchase_analytics(ref self: ContractState, content_id: felt252) -> PurchaseAnalytics {
+            let purchase_count = self.content_purchase_count.read(content_id);
+            let mut completed: u256 = 0;
+            let mut pending: u256 = 0;
+            let mut failed: u256 = 0;
+            let mut refunded: u256 = 0;
+            let mut total_spent = 0;
+            let mut first_timestamp = 0;
+            let mut last_timestamp = 0;
+            
+            let mut i: u32 = 0;
+            while i < purchase_count {
+                let purchase_id = self.content_purchase_ids.read((content_id, i));
+                let purchase = self.purchases.read(purchase_id);
+                
+                match purchase.status {
+                    PurchaseStatus::Completed => {
+                        completed += 1;
+                        total_spent += purchase.price;
+                    },
+                    PurchaseStatus::Pending => pending += 1,
+                    PurchaseStatus::Failed => failed += 1,
+                    PurchaseStatus::Refunded => refunded += 1,
+                };
+                
+                if first_timestamp == 0 || purchase.timestamp < first_timestamp {
+                    first_timestamp = purchase.timestamp;
+                }
+                if purchase.timestamp > last_timestamp {
+                    last_timestamp = purchase.timestamp;
+                }
+                
+                i += 1;
+            };
+            
+            let average_value = if completed > 0 { total_spent / completed } else { 0 };
+            
+            PurchaseAnalytics {
+                total_purchases: purchase_count.into(),
+                completed_purchases: completed,
+                pending_purchases: pending,
+                failed_purchases: failed,
+                refunded_purchases: refunded,
+                total_spent: total_spent,
+                average_purchase_value: average_value,
+                first_purchase_timestamp: first_timestamp,
+                last_purchase_timestamp: last_timestamp,
+            }
+        }
+
+        /// @dev Calculates purchase analytics for a user
+        fn _calculate_user_purchase_analytics(ref self: ContractState, user: ContractAddress) -> PurchaseAnalytics {
+            let purchase_count = self.user_purchase_count.read(user);
+            let mut completed: u256 = 0;
+            let mut pending: u256 = 0;
+            let mut failed: u256 = 0;
+            let mut refunded: u256 = 0;
+            let mut total_spent = 0;
+            let mut first_timestamp = 0;
+            let mut last_timestamp = 0;
+            
+            let mut i: u32 = 0;
+            while i < purchase_count {
+                let purchase_id = self.user_purchase_ids.read((user, i));
+                let purchase = self.purchases.read(purchase_id);
+                
+                match purchase.status {
+                    PurchaseStatus::Completed => {
+                        completed += 1;
+                        total_spent += purchase.price;
+                    },
+                    PurchaseStatus::Pending => pending += 1,
+                    PurchaseStatus::Failed => failed += 1,
+                    PurchaseStatus::Refunded => refunded += 1,
+                };
+                
+                if first_timestamp == 0 || purchase.timestamp < first_timestamp {
+                    first_timestamp = purchase.timestamp;
+                }
+                if purchase.timestamp > last_timestamp {
+                    last_timestamp = purchase.timestamp;
+                }
+                
+                i += 1;
+            };
+            
+            let average_value = if completed > 0 { total_spent / completed } else { 0 };
+            
+            PurchaseAnalytics {
+                total_purchases: purchase_count.into(),
+                completed_purchases: completed,
+                pending_purchases: pending,
+                failed_purchases: failed,
+                refunded_purchases: refunded,
+                total_spent: total_spent,
+                average_purchase_value: average_value,
+                first_purchase_timestamp: first_timestamp,
+                last_purchase_timestamp: last_timestamp,
+            }
+        }
+
+        /// @dev Calculates conversion metrics for content
+        fn _calculate_conversion_metrics(ref self: ContractState, content_id: felt252) -> ConversionMetrics {
+            let views = self.content_views.read(content_id);
+            let purchases = self.content_purchase_count.read(content_id);
+            let conversion_rate = if views > 0 { (purchases.into() * 10000) / views } else { 0 };
+            let revenue_per_view = if views > 0 {
+                let metrics = self._calculate_content_metrics(content_id);
+                metrics.total_revenue / views
+            } else { 0 };
+            
+            ConversionMetrics {
+                content_id: content_id,
+                views: views,
+                purchases: purchases.into(),
+                conversion_rate: conversion_rate,
+                revenue_per_view: revenue_per_view,
+                last_calculated: get_block_timestamp(),
+            }
+        }
+
+        /// @dev Gets top content by sales (simplified implementation)
+        fn _get_top_content_by_sales(ref self: ContractState, limit: u32) -> Array<felt252> {
+            let mut top_content: Array<felt252> = ArrayTrait::new();
+            
+            // Simplified implementation - in production you'd maintain sorted rankings
+            let mut i: u32 = 0;
+            while i < limit && i < 10 { // Limit to 10 for gas efficiency
+                let content_id = self.top_content_by_sales.read(i);
+                if content_id != 0 {
+                    top_content.append(content_id);
+                }
+                i += 1;
+            };
+            
+            top_content
+        }
+
+        /// @dev Gets top creators by revenue (simplified implementation)
+        fn _get_top_creators_by_revenue(ref self: ContractState, limit: u32) -> Array<ContractAddress> {
+            let mut top_creators: Array<ContractAddress> = ArrayTrait::new();
+            
+            let mut i: u32 = 0;
+            while i < limit && i < 10 {
+                let creator = self.top_creators_by_revenue.read(i);
+                if creator != contract_address_const::<0>() {
+                    top_creators.append(creator);
+                }
+                i += 1;
+            };
+            
+            top_creators
+        }
+
+        /// @dev Gets top buyers by spending (simplified implementation)
+        fn _get_top_buyers_by_spending(ref self: ContractState, limit: u32) -> Array<ContractAddress> {
+            let mut top_buyers: Array<ContractAddress> = ArrayTrait::new();
+            
+            let mut i: u32 = 0;
+            while i < limit && i < 10 {
+                let buyer = self.top_buyers_by_spending.read(i);
+                if buyer != contract_address_const::<0>() {
+                    top_buyers.append(buyer);
+                }
+                i += 1;
+            };
+            
+            top_buyers
+        }
+
+        /// @dev Generates a cryptographic hash for receipt verification
+        fn _generate_receipt_hash(
+            ref self: ContractState,
+            purchase_id: u256,
+            buyer: ContractAddress,
+            content_id: felt252,
+            amount: u256,
+            timestamp: u64
+        ) -> felt252 {
+            // Simplified hash generation - in production use proper cryptographic hashing
+            let mut hash_input: felt252 = 0;
+            hash_input = hash_input + purchase_id.try_into().unwrap();
+            hash_input = hash_input + buyer.into();
+            hash_input = hash_input + content_id;
+            hash_input = hash_input + amount.try_into().unwrap();
+            hash_input = hash_input + timestamp.into();
+            
+            hash_input
+        }
+
+        /// @dev Generates a platform signature for receipt authenticity
+        fn _generate_receipt_signature(ref self: ContractState, receipt_hash: felt252) -> felt252 {
+            // Simplified signature generation - in production use proper cryptographic signing
+            let platform_key = self.platform_signing_key.read();
+            let nonce = self.receipt_nonce.read();
+            self.receipt_nonce.write(nonce + 1);
+            
+            // Create signature by combining hash, platform key, and nonce
+            let nonce_felt: felt252 = nonce.try_into().unwrap();
+            let signature_input = receipt_hash + platform_key + nonce_felt;
+            signature_input
+        }
+
+        /// @dev Gets the start of day timestamp
+        fn _get_day_start(ref self: ContractState, timestamp: u64) -> u64 {
+            // Simplified - returns timestamp rounded down to nearest day (86400 seconds)
+            (timestamp / 86400) * 86400
+        }
+
+        /// @dev Gets the start of week timestamp
+        fn _get_week_start(ref self: ContractState, timestamp: u64) -> u64 {
+            // Simplified - returns timestamp rounded down to nearest week (604800 seconds)
+            (timestamp / 604800) * 604800
+        }
+
+        /// @dev Gets the start of month timestamp
+        fn _get_month_start(ref self: ContractState, timestamp: u64) -> u64 {
+            // Simplified - returns timestamp rounded down to nearest 30-day month
+            (timestamp / 2592000) * 2592000
+        }
+
+        /// @dev Updates analytics when a purchase is completed
+        fn _update_analytics_on_completion(ref self: ContractState, purchase: Purchase) {
+            // Update platform-wide metrics
+            let mut platform_metrics = self.platform_sales_metrics.read();
+            platform_metrics.total_sales += 1;
+            platform_metrics.total_revenue += purchase.price;
+            platform_metrics.last_updated = get_block_timestamp();
+            
+            // Recalculate average price
+            if platform_metrics.total_sales > 0 {
+                platform_metrics.average_sale_price = platform_metrics.total_revenue / platform_metrics.total_sales;
+            }
+            
+            self.platform_sales_metrics.write(platform_metrics);
+            
+            // Update content-specific metrics (invalidate cache for recalculation)
+            let empty_metrics = SalesMetrics {
+                total_sales: 0,
+                total_revenue: 0,
+                unique_buyers: 0,
+                average_sale_price: 0,
+                last_updated: 0,
+            };
+            self.content_sales_metrics.write(purchase.content_id, empty_metrics);
+            
+            // Update daily metrics
+            let day_start = self._get_day_start(purchase.timestamp);
+            let mut daily_metrics = self.daily_metrics.read(day_start);
+            daily_metrics.total_sales += 1;
+            daily_metrics.total_revenue += purchase.price;
+            daily_metrics.last_updated = get_block_timestamp();
+            self.daily_metrics.write(day_start, daily_metrics);
         }
     }
 }

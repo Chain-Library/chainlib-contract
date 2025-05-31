@@ -6,6 +6,8 @@ use crate::base::types::{
 };
 use crate::chainlib::ChainLib::ChainLib::{
     Category, Subscription, Payment, ContentType, ContentMetadata, DelegationInfo,
+    SalesMetrics, PurchaseAnalytics, ConversionMetrics, Receipt, ReceiptStatus,
+    TimeBasedMetrics, CreatorMetrics,
 };
 
 #[starknet::interface]
@@ -205,5 +207,76 @@ pub trait IChainLib<TContractState> {
     fn verify_purchase(ref self: TContractState, purchase_id: u256) -> bool;
     fn update_purchase_status(
         ref self: TContractState, purchase_id: u256, status: PurchaseStatus,
+    ) -> bool;
+
+    // ===============================
+    // ANALYTICS AND REPORTING FUNCTIONS
+    // ===============================
+    
+    // Sales Analytics
+    fn get_total_sales_by_content(ref self: TContractState, content_id: felt252) -> SalesMetrics;
+    fn get_total_sales_by_creator(ref self: TContractState, creator: ContractAddress) -> CreatorMetrics;
+    fn get_platform_sales_summary(ref self: TContractState) -> SalesMetrics;
+    
+    // Time-based Analytics
+    fn get_sales_by_time_range(
+        ref self: TContractState, start_time: u64, end_time: u64
+    ) -> TimeBasedMetrics;
+    fn get_daily_sales(ref self: TContractState, day_timestamp: u64) -> SalesMetrics;
+    fn get_weekly_sales(ref self: TContractState, week_start: u64) -> SalesMetrics;
+    fn get_monthly_sales(ref self: TContractState, month_start: u64) -> SalesMetrics;
+    
+    // Purchase Analytics
+    fn get_purchase_analytics(
+        ref self: TContractState, content_id: felt252
+    ) -> PurchaseAnalytics;
+    fn get_user_purchase_analytics(
+        ref self: TContractState, user: ContractAddress
+    ) -> PurchaseAnalytics;
+    
+    // Conversion Metrics
+    fn get_conversion_metrics(ref self: TContractState, content_id: felt252) -> ConversionMetrics;
+    fn calculate_conversion_rate(
+        ref self: TContractState, content_id: felt252, views: u256
+    ) -> u256; // Returns percentage * 100 (e.g., 2550 = 25.50%)
+    
+    // Top Performers
+    fn get_top_selling_content(ref self: TContractState, limit: u32) -> Array<felt252>;
+    fn get_top_creators_by_revenue(ref self: TContractState, limit: u32) -> Array<ContractAddress>;
+    fn get_top_buyers(ref self: TContractState, limit: u32) -> Array<ContractAddress>;
+    
+    // ===============================
+    // RECEIPT GENERATION AND VERIFICATION
+    // ===============================
+    
+    // Receipt Generation
+    fn generate_receipt(ref self: TContractState, purchase_id: u256) -> felt252; // Returns receipt_id
+    fn get_receipt_details(ref self: TContractState, receipt_id: felt252) -> Receipt;
+    fn get_purchase_receipt(ref self: TContractState, purchase_id: u256) -> Receipt;
+    
+    // Receipt Verification
+    fn verify_receipt_signature(
+        ref self: TContractState, receipt_id: felt252, signature: felt252
+    ) -> bool;
+    fn verify_receipt_on_chain(ref self: TContractState, receipt_id: felt252) -> bool;
+    fn lookup_receipt_by_hash(ref self: TContractState, receipt_hash: felt252) -> Receipt;
+    
+    // Receipt Management
+    fn invalidate_receipt(ref self: TContractState, receipt_id: felt252, reason: felt252) -> bool;
+    fn get_user_receipts(
+        ref self: TContractState, user: ContractAddress
+    ) -> Array<Receipt>;
+    fn get_content_receipts(ref self: TContractState, content_id: felt252) -> Array<Receipt>;
+    
+    // Receipt Status and Metadata
+    fn get_receipt_status(ref self: TContractState, receipt_id: felt252) -> ReceiptStatus;
+    fn update_receipt_metadata(
+        ref self: TContractState, receipt_id: felt252, metadata: felt252
+    ) -> bool;
+    
+    // Analytics Integration
+    fn get_receipt_analytics(ref self: TContractState) -> (u256, u256, u256); // (total, valid, invalid)
+    fn track_milestone_achievement(
+        ref self: TContractState, milestone_type: felt252, value: u256
     ) -> bool;
 }
