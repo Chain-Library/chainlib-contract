@@ -1,16 +1,15 @@
+use chain_lib::base::types::{Rank, Role};
 use chain_lib::chainlib::ChainLib;
-
+use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentMetadata, ContentType};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{
-    CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare, spy_events,
-    EventSpy, EventSpyAssertionsTrait,
+    CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpy, EventSpyAssertionsTrait,
+    cheat_caller_address, declare, spy_events,
 };
 use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
-use chain_lib::base::types::{Role, Rank};
-use chain_lib::chainlib::ChainLib::ChainLib::{ContentType, Category, ContentMetadata};
 
 
 fn setup() -> (ContractAddress, ContractAddress) {

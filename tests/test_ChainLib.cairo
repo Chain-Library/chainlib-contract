@@ -1,17 +1,16 @@
 // Import the contract modules
+use chain_lib::base::types::{PurchaseStatus, Rank, Role, Status};
 use chain_lib::chainlib::ChainLib;
-
+use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{
-    CheatSpan, ContractClassTrait, DeclareResultTrait, start_cheat_caller_address,
-    cheat_caller_address, declare, stop_cheat_caller_address,
+    CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
+    start_cheat_caller_address, stop_cheat_caller_address,
 };
-use starknet::{ContractAddress};
+use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
-use chain_lib::base::types::{Role, Rank, PurchaseStatus, Status};
-use chain_lib::chainlib::ChainLib::ChainLib::{ContentType, Category};
 
 /// Helper function to create a content item with a price
 /// We'll use the set_content_price function implemented in the contract

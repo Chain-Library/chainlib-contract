@@ -1,11 +1,12 @@
-use starknet::ContractAddress;
 use core::array::Array;
+use starknet::ContractAddress;
 use crate::base::types::{
-    TokenBoundAccount, User, Role, Rank, Permissions, AccessRule, VerificationRequirement,
-    VerificationType, Purchase, PurchaseStatus,
+    AccessRule, FailureRecovery, Permissions, Purchase, PurchaseStatus, Rank,
+    RecoveryType, Role, SuspiciousActivityType, TokenBoundAccount,
+    TransactionLimits, User, VerificationRequirement, VerificationType,
 };
 use crate::chainlib::ChainLib::ChainLib::{
-    Category, Subscription, Payment, ContentType, ContentMetadata, DelegationInfo,
+    Category, ContentMetadata, ContentType, DelegationInfo, Subscription,
 };
 
 #[starknet::interface]
@@ -206,4 +207,43 @@ pub trait IChainLib<TContractState> {
     fn update_purchase_status(
         ref self: TContractState, purchase_id: u256, status: PurchaseStatus,
     ) -> bool;
+
+    // Payment Safety Mechanisms
+    fn validate_transaction(
+        ref self: TContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256,
+    ) -> bool;
+
+    fn set_transaction_limits(ref self: TContractState, limits: TransactionLimits) -> bool;
+
+    fn get_transaction_limits(self: @TContractState) -> TransactionLimits;
+
+    fn check_rate_limits(ref self: TContractState, user: ContractAddress, amount: u256) -> bool;
+
+    fn detect_suspicious_activity(
+        ref self: TContractState, user: ContractAddress, amount: u256, transaction_type: felt252,
+    ) -> bool;
+
+    fn flag_suspicious_activity(
+        ref self: TContractState, user: ContractAddress, activity_type: SuspiciousActivityType,
+    ) -> bool;
+
+    fn get_user_risk_score(self: @TContractState, user: ContractAddress) -> u8;
+
+    fn is_user_blocked(self: @TContractState, user: ContractAddress) -> bool;
+
+    fn emergency_pause(ref self: TContractState, functions_to_pause: u64) -> bool;
+
+    fn emergency_resume(ref self: TContractState, functions_to_resume: u64) -> bool;
+
+    fn is_function_paused(self: @TContractState, function_flag: u64) -> bool;
+
+    fn set_emergency_admin(ref self: TContractState, emergency_admin: ContractAddress) -> bool;
+
+    fn initiate_recovery(
+        ref self: TContractState, recovery_type: RecoveryType, recovery_duration: u64,
+    ) -> felt252;
+
+    fn execute_recovery(ref self: TContractState, recovery_key: felt252) -> bool;
+
+    fn get_recovery_info(self: @TContractState, recovery_key: felt252) -> FailureRecovery;
 }

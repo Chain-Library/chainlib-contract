@@ -146,3 +146,79 @@ pub struct Purchase {
     pub timestamp: u64,
     pub transaction_hash: felt252,
 }
+
+// Payment Safety Mechanism Types
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct TransactionLimits {
+    pub min_amount: u256,
+    pub max_amount: u256,
+    pub daily_limit: u256,
+    pub max_transactions_per_hour: u32,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct UserActivity {
+    pub last_transaction_time: u64,
+    pub daily_spent: u256,
+    pub daily_transaction_count: u32,
+    pub last_reset_day: u64,
+    pub transaction_count_hour: u32,
+    pub last_hour_timestamp: u64,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct SuspiciousActivity {
+    pub user: ContractAddress,
+    pub activity_type: SuspiciousActivityType,
+    pub detected_at: u64,
+    pub risk_score: u8, // 0-100, where 100 is highest risk
+    pub is_blocked: bool,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+pub enum SuspiciousActivityType {
+    #[default]
+    RapidTransactions,
+    LargeAmountTransfer,
+    UnusualPattern,
+    MultipleFailures,
+    GeographicAnomaly,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct EmergencyState {
+    pub is_paused: bool,
+    pub paused_functions: u64, // Bit flags for paused functions
+    pub emergency_admin: ContractAddress,
+    pub pause_timestamp: u64,
+    pub auto_resume_timestamp: u64 // 0 means manual resume only
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct FailureRecovery {
+    pub recovery_key: felt252,
+    pub initiated_by: ContractAddress,
+    pub initiated_at: u64,
+    pub expires_at: u64,
+    pub recovery_type: RecoveryType,
+    pub is_executed: bool,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+pub enum RecoveryType {
+    #[default]
+    PaymentRecovery,
+    AccountRecovery,
+    EmergencyWithdrawal,
+    SystemRestore,
+}
+
+// Payment Safety Flags
+pub mod safety_flags {
+    pub const PAYMENTS_PAUSED: u64 = 0x1;
+    pub const WITHDRAWALS_PAUSED: u64 = 0x2;
+    pub const SUBSCRIPTIONS_PAUSED: u64 = 0x4;
+    pub const CONTENT_ACCESS_PAUSED: u64 = 0x8;
+    pub const USER_REGISTRATION_PAUSED: u64 = 0x10;
+    pub const ALL_FUNCTIONS_PAUSED: u64 = 0xFFFFFFFFFFFFFFFF;
+}

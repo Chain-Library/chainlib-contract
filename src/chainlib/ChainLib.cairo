@@ -1,24 +1,24 @@
 #[starknet::contract]
 pub mod ChainLib {
-    use core::array::Array;
-    use core::array::ArrayTrait;
+    use core::array::{Array, ArrayTrait};
     use core::option::OptionTrait;
     use core::traits::Into;
+    use core::num::traits::Zero;
     use starknet::storage::{
-        Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
-        StoragePointerWriteAccess, Vec, VecTrait,
+        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
+        StoragePointerWriteAccess,
     };
-
-
     use starknet::{
-        ContractAddress, get_block_timestamp, get_caller_address, contract_address_const,
+        ContractAddress, get_block_timestamp, get_caller_address, get_contract_address,
+    };
+    use crate::base::errors::{payment_safety_errors, permission_errors};
+    use crate::base::types::{
+        AccessRule, AccessType, EmergencyState, FailureRecovery, Permissions, Purchase,
+        PurchaseStatus, Rank, RecoveryType, Role, Status, SuspiciousActivity,
+        SuspiciousActivityType, TokenBoundAccount, TransactionLimits, User, UserActivity,
+        VerificationRequirement, VerificationType, permission_flags,
     };
     use crate::interfaces::IChainLib::IChainLib;
-
-    use crate::base::types::{
-        TokenBoundAccount, User, Role, Rank, Permissions, permission_flags, AccessRule, AccessType,
-        Status, VerificationRequirement, VerificationType, Purchase, PurchaseStatus,
-    };
 
     // Define delegation-specific structures and constants
 
@@ -119,53 +119,64 @@ pub mod ChainLib {
         next_course_id: u256,
         user_id: u256,
         users: Map<u256, User>,
-        creators_content: Map::<ContractAddress, ContentMetadata>,
-        content: Map::<felt252, ContentMetadata>,
-        content_tags: Map::<ContentMetadata, Array<felt252>>,
+        creators_content: Map<ContractAddress, ContentMetadata>,
+        content: Map<felt252, ContentMetadata>,
+        #[allow(starknet::invalid_storage_member_types)]
+        content_tags: Map<ContentMetadata, Array<felt252>>,
         // Subscription related storage
         subscription_id: u256,
-        subscriptions: Map::<u256, Subscription>,
+        subscriptions: Map<u256, Subscription>,
         // Instead of storing arrays directly, we'll use a counter-based approach
-        user_subscription_count: Map::<ContractAddress, u256>,
-        user_subscription_by_index: Map::<(ContractAddress, u256), u256>,
+        user_subscription_count: Map<ContractAddress, u256>,
+        user_subscription_by_index: Map<(ContractAddress, u256), u256>,
         payment_id: u256,
-        payments: Map::<u256, Payment>,
+        payments: Map<u256, Payment>,
         // Similar counter-based approach for subscription payments
-        subscription_payment_count: Map::<u256, u256>,
-        subscription_payment_by_index: Map::<(u256, u256), u256>,
+        subscription_payment_count: Map<u256, u256>,
+        subscription_payment_by_index: Map<(u256, u256), u256>,
         next_content_id: felt252,
         user_by_address: Map<ContractAddress, User>,
-        operator_permissions: Map::<(u256, ContractAddress), Permissions>,
-        content_access: Map::<felt252, ContentAccess>,
-        premium_content_access: Map::<(u256, felt252), bool>,
-        access_cache: Map::<(u256, felt252), AccessCache>,
-        access_blacklist: Map::<(u256, felt252), bool>,
+        operator_permissions: Map<(u256, ContractAddress), Permissions>,
+        content_access: Map<felt252, ContentAccess>,
+        premium_content_access: Map<(u256, felt252), bool>,
+        access_cache: Map<(u256, felt252), AccessCache>,
+        access_blacklist: Map<(u256, felt252), bool>,
         cache_ttl: u64,
-        delegations: Map::<(ContractAddress, u64), DelegationInfo>,
-        delegation_nonces: Map::<ContractAddress, u64>,
-        delegation_history: Map::<(ContractAddress, ContractAddress), u64>,
+        delegations: Map<(ContractAddress, u64), DelegationInfo>,
+        delegation_nonces: Map<ContractAddress, u64>,
+        delegation_history: Map<(ContractAddress, ContractAddress), u64>,
         content_access_rules_count: Map<felt252, u32>,
         content_access_rules: Map<(felt252, u32), AccessRule>,
         user_content_permissions: Map<(ContractAddress, felt252), Permissions>,
         content_verification_requirements_count: Map<felt252, u32>,
         content_verification_requirements: Map<(felt252, u32), VerificationRequirement>,
+        #[allow(starknet::invalid_storage_member_types)]
         user_verifications: Map<(ContractAddress, VerificationType), bool>,
         user_identity_verifications: Map<ContractAddress, bool>,
         user_payment_verifications: Map<ContractAddress, bool>,
         user_reputation_verifications: Map<ContractAddress, bool>,
         user_ownership_verifications: Map<ContractAddress, bool>,
         user_custom_verifications: Map<ContractAddress, bool>,
-        content_prices: Map::<felt252, u256>, // Maps content_id to price
+        content_prices: Map<felt252, u256>, // Maps content_id to price
         next_purchase_id: u256, // Tracking the next available purchase ID
-        purchases: Map::<u256, Purchase>, // Store purchases by ID
-        user_purchase_count: Map::<ContractAddress, u32>, // Count of purchases per user
-        user_purchase_ids: Map::<
-            (ContractAddress, u32), u256,
-        >, // Map of (user, index) to purchase ID
-        content_purchase_count: Map::<felt252, u32>, // Count of purchases per content
-        content_purchase_ids: Map::<
+        purchases: Map<u256, Purchase>, // Store purchases by ID
+        user_purchase_count: Map<ContractAddress, u32>, // Count of purchases per user
+        user_purchase_ids: Map<(ContractAddress, u32), u256>, // Map of (user, index) to purchase ID
+        content_purchase_count: Map<felt252, u32>, // Count of purchases per content
+        content_purchase_ids: Map<
             (felt252, u32), u256,
-        > // Map of (content_id, index) to purchase ID
+        >, // Map of (content_id, index) to purchase ID
+        // Payment Safety Mechanisms Storage
+        transaction_limits: TransactionLimits,
+        user_activities: Map<ContractAddress, UserActivity>,
+        suspicious_activities: Map<ContractAddress, SuspiciousActivity>,
+        blocked_users: Map<ContractAddress, bool>,
+        emergency_state: EmergencyState,
+        recovery_counter: u256,
+        active_recoveries: Map<felt252, FailureRecovery>,
+        user_risk_scores: Map<ContractAddress, u8>,
+        failed_transaction_count: Map<ContractAddress, u32>,
+        last_failed_transaction: Map<ContractAddress, u64>,
     }
 
 
@@ -175,6 +186,26 @@ pub mod ChainLib {
         self.admin.write(admin);
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
+
+        // Initialize payment safety mechanisms
+        let default_limits = TransactionLimits {
+            min_amount: 1000000000000000_u256, // 0.001 ETH minimum
+            max_amount: 10000000000000000000_u256, // 10 ETH maximum
+            daily_limit: 50000000000000000000_u256, // 50 ETH daily limit
+            max_transactions_per_hour: 10_u32,
+        };
+        self.transaction_limits.write(default_limits);
+
+        let default_emergency_state = EmergencyState {
+            is_paused: false,
+            paused_functions: 0_u64,
+            emergency_admin: admin,
+            pause_timestamp: 0_u64,
+            auto_resume_timestamp: 0_u64,
+        };
+        self.emergency_state.write(default_emergency_state);
+
+        self.recovery_counter.write(0_u256);
     }
 
     #[event]
@@ -203,6 +234,17 @@ pub mod ChainLib {
         DelegationExpired: DelegationExpired,
         ContentPurchased: ContentPurchased,
         PurchaseStatusUpdated: PurchaseStatusUpdated,
+        // Payment Safety Events
+        TransactionValidated: TransactionValidated,
+        SuspiciousActivityDetected: SuspiciousActivityDetected,
+        UserBlocked: UserBlocked,
+        EmergencyPauseActivated: EmergencyPauseActivated,
+        EmergencyResumed: EmergencyResumed,
+        RecoveryInitiated: RecoveryInitiated,
+        RecoveryExecuted: RecoveryExecuted,
+        RateLimitExceeded: RateLimitExceeded,
+        TransactionLimitsUpdated: TransactionLimitsUpdated,
+        EmergencyAdminUpdated: EmergencyAdminUpdated,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -358,6 +400,85 @@ pub mod ChainLib {
         pub timestamp: u64,
     }
 
+    // Payment Safety Events
+    #[derive(Drop, starknet::Event)]
+    pub struct TransactionValidated {
+        pub user: ContractAddress,
+        pub amount: u256,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct SuspiciousActivityDetected {
+        pub user: ContractAddress,
+        pub activity_type: SuspiciousActivityType,
+        pub risk_score: u8,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct UserBlocked {
+        pub user: ContractAddress,
+        pub reason: felt252,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct EmergencyPauseActivated {
+        pub paused_functions: u64,
+        pub activated_by: ContractAddress,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct EmergencyResumed {
+        pub resumed_functions: u64,
+        pub resumed_by: ContractAddress,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RecoveryInitiated {
+        pub recovery_key: felt252,
+        pub recovery_type: RecoveryType,
+        pub initiated_by: ContractAddress,
+        pub expires_at: u64,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RecoveryExecuted {
+        pub recovery_key: felt252,
+        pub executed_by: ContractAddress,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RateLimitExceeded {
+        pub user: ContractAddress,
+        pub limit_type: felt252,
+        pub current_amount: u256,
+        pub limit_amount: u256,
+        pub timestamp: u64,
+    }
+
+    // Missing Payment Safety Events
+    #[derive(Drop, starknet::Event)]
+    pub struct TransactionLimitsUpdated {
+        pub min_amount: u256,
+        pub max_amount: u256,
+        pub daily_limit: u256,
+        pub max_transactions_per_hour: u32,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct EmergencyAdminUpdated {
+        pub old_admin: ContractAddress,
+        pub new_admin: ContractAddress,
+        pub timestamp: u64,
+    }
+
     #[abi(embed_v0)]
     impl ChainLibNetImpl of IChainLib<ContractState> {
         fn create_token_account(
@@ -371,7 +492,7 @@ pub mod ChainLib {
 
             // Retrieve the current account ID before incrementing.
             let account_id = self.current_account_id.read();
-            let caller = get_caller_address();
+            let _caller = get_caller_address();
 
             // Create default full permissions for the owner
             let owner_permissions = Permissions { value: permission_flags::FULL };
@@ -472,8 +593,7 @@ pub mod ChainLib {
             metadata: felt252,
         ) {
             assert!(username != 0, "User name cannot be empty");
-            let zero: ContractAddress = contract_address_const::<0>();
-            assert!(wallet_address != zero, "Address cannot be zero");
+            assert!(!wallet_address.is_zero(), "Address cannot be zero");
 
             let user = self.users.read(id);
 
@@ -952,7 +1072,7 @@ pub mod ChainLib {
                 };
                 self.content_verification_requirements.write((content_id, i), default_req);
                 i += 1;
-            };
+            }
 
             // Store new requirements
             let new_count = requirements.len();
@@ -961,7 +1081,7 @@ pub mod ChainLib {
                 let req = requirements.at(i);
                 self.content_verification_requirements.write((content_id, i), *req);
                 i += 1;
-            };
+            }
 
             self.content_verification_requirements_count.write(content_id, new_count);
             true
@@ -979,7 +1099,7 @@ pub mod ChainLib {
                 let req = self.content_verification_requirements.read((content_id, i));
                 requirements.append(req);
                 i += 1;
-            };
+            }
 
             requirements
         }
@@ -1006,7 +1126,7 @@ pub mod ChainLib {
                 };
                 self.content_access_rules.write((content_id, i), empty_rule);
                 i += 1;
-            };
+            }
 
             // Store new rules
             let new_count = rules.len();
@@ -1015,7 +1135,7 @@ pub mod ChainLib {
                 let rule = *rules.at(i);
                 self.content_access_rules.write((content_id, i), rule);
                 i += 1;
-            };
+            }
 
             self.content_access_rules_count.write(content_id, new_count);
             true
@@ -1033,7 +1153,7 @@ pub mod ChainLib {
                 let rule = self.content_access_rules.read((content_id, i));
                 rules.append(rule);
                 i += 1;
-            };
+            }
 
             rules
         }
@@ -1068,7 +1188,7 @@ pub mod ChainLib {
                 if req.valid_until != 0 && req.valid_until < current_time {
                     i += 1;
                     continue;
-                };
+                }
 
                 // Check verification status based on type
                 let is_verified = match req.requirement_type {
@@ -1082,9 +1202,9 @@ pub mod ChainLib {
                 if !is_verified {
                     status = false;
                     break;
-                };
+                }
                 i += 1;
-            };
+            }
             status
         }
 
@@ -1114,7 +1234,7 @@ pub mod ChainLib {
                 VerificationType::Custom => {
                     self.user_custom_verifications.write(user, is_verified);
                 },
-            };
+            }
 
             self
                 .emit(
@@ -1349,7 +1469,6 @@ pub mod ChainLib {
 
             // Create a new subscription
             let subscription_id = self.subscription_id.read() + 1;
-            let current_time = get_block_timestamp();
 
             // Default subscription period is 30 days (in seconds)
             let subscription_period: u64 = 30 * 24 * 60 * 60;
@@ -1487,7 +1606,7 @@ pub mod ChainLib {
             }
 
             // Check cache first
-            let cached_access = self.access_cache.read(cache_key);
+            let _cached_access = self.access_cache.read(cache_key);
 
             // Cache miss or expired, perform full verification
             let user = self.users.read(user_id);
@@ -1706,7 +1825,7 @@ pub mod ChainLib {
 
                 // Move to the next index
                 i += 1;
-            };
+            }
 
             // Return the array of purchases
             purchases
@@ -1768,6 +1887,440 @@ pub mod ChainLib {
             self.emit(PurchaseStatusUpdated { purchase_id, new_status: status_code, timestamp });
 
             true
+        }
+
+        // ================================
+        // Payment Safety Mechanisms
+        // ================================
+
+        fn validate_transaction(
+            ref self: ContractState,
+            sender: ContractAddress,
+            recipient: ContractAddress,
+            amount: u256,
+        ) -> bool {
+            // Check if sender is blocked
+            if self.blocked_users.read(sender) {
+                return false;
+            }
+
+            // Check if recipient is valid (not zero address)
+            if recipient.is_zero() {
+                return false;
+            }
+
+            // Check if amount is within limits
+            let limits = self.transaction_limits.read();
+            if amount < limits.min_amount || amount > limits.max_amount {
+                return false;
+            }
+
+            // Check rate limits
+            if !self.check_rate_limits(sender, amount) {
+                return false;
+            }
+
+            // Check user risk score
+            let risk_score = self.user_risk_scores.read(sender);
+            if risk_score > 8 { // High risk threshold
+                return false;
+            }
+
+            true
+        }
+
+        fn set_transaction_limits(ref self: ContractState, limits: TransactionLimits) -> bool {
+            // Only admin can set limits
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can set limits');
+
+            // Validate limits
+            assert(limits.min_amount > 0, payment_safety_errors::INVALID_AMOUNT);
+            assert(limits.max_amount > limits.min_amount, payment_safety_errors::INVALID_AMOUNT);
+            assert(limits.daily_limit >= limits.max_amount, payment_safety_errors::INVALID_AMOUNT);
+
+            self.transaction_limits.write(limits);
+
+            self
+                .emit(
+                    TransactionLimitsUpdated {
+                        min_amount: limits.min_amount,
+                        max_amount: limits.max_amount,
+                        daily_limit: limits.daily_limit,
+                        max_transactions_per_hour: limits.max_transactions_per_hour,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn get_transaction_limits(self: @ContractState) -> TransactionLimits {
+            self.transaction_limits.read()
+        }
+
+        fn check_rate_limits(ref self: ContractState, user: ContractAddress, amount: u256) -> bool {
+            let current_time = get_block_timestamp();
+            let limits = self.transaction_limits.read();
+            let mut user_activity = self.user_activities.read(user);
+
+            // Reset counters if hour has passed
+            if current_time - user_activity.last_hour_timestamp > 3600 {
+                user_activity.transaction_count_hour = 0;
+                user_activity.last_hour_timestamp = current_time;
+            }
+
+            // Reset daily counters if day has passed
+            if current_time - user_activity.last_reset_day > 86400 {
+                user_activity.daily_spent = 0;
+                user_activity.daily_transaction_count = 0;
+                user_activity.last_reset_day = current_time;
+            }
+
+            // Check hourly transaction limit
+            if user_activity.transaction_count_hour >= limits.max_transactions_per_hour {
+                return false;
+            }
+
+            // Check daily spending limit
+            if user_activity.daily_spent + amount > limits.daily_limit {
+                return false;
+            }
+
+            // Update activity
+            user_activity.transaction_count_hour += 1;
+            user_activity.daily_spent += amount;
+            user_activity.daily_transaction_count += 1;
+            user_activity.last_transaction_time = current_time;
+            self.user_activities.write(user, user_activity);
+
+            true
+        }
+
+        fn detect_suspicious_activity(
+            ref self: ContractState, user: ContractAddress, amount: u256, transaction_type: felt252,
+        ) -> bool {
+            let current_time = get_block_timestamp();
+            let _suspicious_activity = self.suspicious_activities.read(user);
+            let user_activity = self.user_activities.read(user);
+            let limits = self.transaction_limits.read();
+
+            let mut is_suspicious = false;
+            let mut risk_increase = 0_u8;
+
+            // Check for unusually large transaction
+            if amount > limits.max_amount * 80 / 100 { // 80% of max limit
+                is_suspicious = true;
+                risk_increase += 3;
+            }
+
+            // Check for rapid transactions
+            if current_time - user_activity.last_transaction_time < 60 { // Less than 1 minute
+                is_suspicious = true;
+                risk_increase += 2;
+            }
+
+            // Check for unusual time patterns (transactions at odd hours)
+            let hour_of_day = (current_time / 3600) % 24;
+            if hour_of_day < 6 || hour_of_day > 22 { // Between 10 PM and 6 AM
+                is_suspicious = true;
+                risk_increase += 1;
+            }
+
+            if is_suspicious {
+                // Update risk score
+                let current_risk = self.user_risk_scores.read(user);
+                let new_risk = if current_risk + risk_increase > 10 {
+                    10
+                } else {
+                    current_risk + risk_increase
+                };
+                self.user_risk_scores.write(user, new_risk);
+
+                // Create new suspicious activity record
+                let new_suspicious_activity = SuspiciousActivity {
+                    user,
+                    activity_type: SuspiciousActivityType::LargeAmountTransfer, // Default type
+                    detected_at: current_time,
+                    risk_score: new_risk,
+                    is_blocked: new_risk >= 9,
+                };
+
+                self.suspicious_activities.write(user, new_suspicious_activity);
+
+                // Block user if risk score is too high
+                if new_risk >= 9 {
+                    self.blocked_users.write(user, true);
+                    self.emit(UserBlocked { user, reason: transaction_type, timestamp: current_time });
+                }
+
+                self
+                    .emit(
+                        SuspiciousActivityDetected {
+                            user,
+                            activity_type: new_suspicious_activity.activity_type,
+                            risk_score: new_risk,
+                            timestamp: current_time,
+                        },
+                    );
+            }
+
+            is_suspicious
+        }
+
+        fn flag_suspicious_activity(
+            ref self: ContractState, user: ContractAddress, activity_type: SuspiciousActivityType,
+        ) -> bool {
+            // Only admin or automated system can flag
+            let caller = get_caller_address();
+            let admin = self.admin.read();
+            assert(
+                caller == admin || caller == get_contract_address(), permission_errors::NO_PERMISSION,
+            );
+
+            let current_time = get_block_timestamp();
+
+            // Determine severity based on activity type
+            let severity = match activity_type {
+                SuspiciousActivityType::LargeAmountTransfer => 3_u8,
+                SuspiciousActivityType::RapidTransactions => 2_u8,
+                SuspiciousActivityType::UnusualPattern => 1_u8,
+                SuspiciousActivityType::MultipleFailures => 4_u8,
+                SuspiciousActivityType::GeographicAnomaly => 2_u8,
+            };
+
+            // Update risk score based on severity
+            let current_risk = self.user_risk_scores.read(user);
+            let new_risk = if current_risk + severity > 10 {
+                10
+            } else {
+                current_risk + severity
+            };
+            self.user_risk_scores.write(user, new_risk);
+
+            // Create suspicious activity record
+            let suspicious_activity = SuspiciousActivity {
+                user,
+                activity_type,
+                detected_at: current_time,
+                risk_score: new_risk,
+                is_blocked: new_risk >= 9,
+            };
+
+            self.suspicious_activities.write(user, suspicious_activity);
+
+            // Block user if risk score is too high
+            if new_risk >= 9 {
+                self.blocked_users.write(user, true);
+
+                self.emit(UserBlocked { user, reason: 'High risk score', timestamp: current_time });
+            }
+
+            self
+                .emit(
+                    SuspiciousActivityDetected {
+                        user,
+                        activity_type,
+                        risk_score: new_risk,
+                        timestamp: current_time,
+                    },
+                );
+
+            true
+        }
+
+        fn get_user_risk_score(self: @ContractState, user: ContractAddress) -> u8 {
+            self.user_risk_scores.read(user)
+        }
+
+        fn is_user_blocked(self: @ContractState, user: ContractAddress) -> bool {
+            self.blocked_users.read(user)
+        }
+
+        fn emergency_pause(ref self: ContractState, functions_to_pause: u64) -> bool {
+            // Only admin or emergency admin can pause
+            let caller = get_caller_address();
+            let admin = self.admin.read();
+            let emergency_state = self.emergency_state.read();
+
+            assert(
+                caller == admin || caller == emergency_state.emergency_admin,
+                permission_errors::NO_PERMISSION,
+            );
+
+            let mut new_emergency_state = emergency_state;
+            new_emergency_state.is_paused = true;
+            new_emergency_state.paused_functions = functions_to_pause;
+            new_emergency_state.pause_timestamp = get_block_timestamp();
+
+            self.emergency_state.write(new_emergency_state);
+
+            self
+                .emit(
+                    EmergencyPauseActivated {
+                        paused_functions: functions_to_pause,
+                        activated_by: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn emergency_resume(ref self: ContractState, functions_to_resume: u64) -> bool {
+            // Only admin can resume
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can resume');
+
+            let mut emergency_state = self.emergency_state.read();
+
+            // Remove functions from paused list (using bitwise operations)
+            emergency_state.paused_functions = emergency_state.paused_functions & (functions_to_resume ^ 0xFFFFFFFFFFFFFFFF);
+
+            // If no functions are paused, resume normal operations
+            if emergency_state.paused_functions == 0 {
+                emergency_state.is_paused = false;
+                emergency_state.auto_resume_timestamp = get_block_timestamp();
+            }
+
+            self.emergency_state.write(emergency_state);
+
+            self
+                .emit(
+                    EmergencyResumed {
+                        resumed_functions: functions_to_resume,
+                        resumed_by: get_caller_address(),
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn is_function_paused(self: @ContractState, function_flag: u64) -> bool {
+            let emergency_state = self.emergency_state.read();
+
+            if !emergency_state.is_paused {
+                return false;
+            }
+
+            // Check if the function flag is in the paused functions using bitwise AND
+            (emergency_state.paused_functions & function_flag) != 0
+        }
+
+        fn set_emergency_admin(
+            ref self: ContractState, emergency_admin: ContractAddress,
+        ) -> bool {
+            // Only admin can set emergency admin
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Admin only');
+
+            assert(!emergency_admin.is_zero(), payment_safety_errors::INVALID_RECIPIENT);
+
+            let mut emergency_state = self.emergency_state.read();
+            let old_admin = emergency_state.emergency_admin;
+            emergency_state.emergency_admin = emergency_admin;
+            self.emergency_state.write(emergency_state);
+
+            self
+                .emit(
+                    EmergencyAdminUpdated {
+                        old_admin,
+                        new_admin: emergency_admin,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn initiate_recovery(
+            ref self: ContractState, recovery_type: RecoveryType, recovery_duration: u64,
+        ) -> felt252 {
+            // Only admin can initiate recovery
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Admin only');
+
+            let recovery_id = self.recovery_counter.read() + 1;
+            self.recovery_counter.write(recovery_id);
+
+            let current_time = get_block_timestamp();
+            let recovery_key: felt252 = recovery_id.try_into().unwrap();
+
+            let recovery = FailureRecovery {
+                recovery_key,
+                initiated_by: get_caller_address(),
+                initiated_at: current_time,
+                expires_at: current_time + recovery_duration,
+                recovery_type,
+                is_executed: false,
+            };
+
+            self.active_recoveries.write(recovery_key, recovery);
+
+            self
+                .emit(
+                    RecoveryInitiated {
+                        recovery_key,
+                        recovery_type,
+                        initiated_by: get_caller_address(),
+                        expires_at: current_time + recovery_duration,
+                        timestamp: current_time,
+                    },
+                );
+
+            recovery_key
+        }
+
+        fn execute_recovery(ref self: ContractState, recovery_key: felt252) -> bool {
+            // Only admin can execute recovery
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can execute recovery');
+
+            let mut recovery = self.active_recoveries.read(recovery_key);
+            assert(!recovery.is_executed, payment_safety_errors::RECOVERY_IN_PROGRESS);
+
+            let current_time = get_block_timestamp();
+            assert(current_time <= recovery.expires_at, payment_safety_errors::RECOVERY_EXPIRED);
+
+            // Mark as executed
+            recovery.is_executed = true;
+            self.active_recoveries.write(recovery_key, recovery);
+
+            // Perform recovery based on type
+            match recovery.recovery_type {
+                RecoveryType::PaymentRecovery => {
+                    // Reset payment-related issues
+                    // Implementation depends on specific requirements
+                },
+                RecoveryType::AccountRecovery => {
+                    // Reset account-related issues
+                    // Implementation depends on specific requirements
+                },
+                RecoveryType::EmergencyWithdrawal => {
+                    // Handle emergency withdrawal
+                    // Implementation depends on specific requirements
+                },
+                RecoveryType::SystemRestore => {
+                    // Restore system to previous state
+                    // Implementation depends on specific requirements
+                },
+            }
+
+            self
+                .emit(
+                    RecoveryExecuted {
+                        recovery_key,
+                        executed_by: get_caller_address(),
+                        timestamp: current_time,
+                    },
+                );
+
+            true
+        }
+
+        fn get_recovery_info(self: @ContractState, recovery_key: felt252) -> FailureRecovery {
+            self.active_recoveries.read(recovery_key)
         }
     }
 }

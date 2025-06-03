@@ -6,29 +6,26 @@ const PERMISSION_SIGN: u64 = 0x2;
 const PERMISSION_CALL: u64 = 0x4;
 const PERMISSION_ADMIN: u64 = 0x8;
 use chain_lib::chainlib::ChainLib::ChainLib::{
-    DelegationInfo, delegation_flags, Event, DelegationCreated, DelegationExpired, DelegationUsed,
-    DelegationRevoked,
+    DelegationCreated, DelegationExpired, DelegationInfo, DelegationRevoked, DelegationUsed, Event,
+    delegation_flags,
 };
+use chain_lib::interfaces::IChainLib::{IChainLibDispatcher, IChainLibDispatcherTrait};
 // use chain_lib::interfaces::IChainLib::{
 //     IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait
 // };
 use core::array::ArrayTrait;
 use core::result::ResultTrait;
-use chain_lib::interfaces::IChainLib::{IChainLibDispatcher, IChainLibDispatcherTrait};
-
-use starknet::class_hash::ClassHash;
-use starknet::contract_address::contract_address_const;
-use starknet::get_caller_address;
 // use chain_lib::base::types::{Permissions, permission_flags, DelegationInfo, delegation_flags};
 // use chain_lib::base::types::{DelegationInfo, delegation_flags};
 
 use snforge_std::{
     ContractClassTrait, DeclareResultTrait, EventSpyAssertionsTrait, declare, spy_events,
-    start_cheat_caller_address, stop_cheat_caller_address, start_cheat_block_timestamp,
-    stop_cheat_block_timestamp,
+    start_cheat_block_timestamp, start_cheat_caller_address, stop_cheat_block_timestamp,
+    stop_cheat_caller_address,
 };
-
-use starknet::{ContractAddress, get_block_timestamp};
+use starknet::class_hash::ClassHash;
+use starknet::contract_address::contract_address_const;
+use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
 
 fn setup() -> ContractAddress {
     let contract_class = declare("ChainLib").unwrap().contract_class();
