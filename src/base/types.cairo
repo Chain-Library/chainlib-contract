@@ -145,4 +145,5 @@ pub struct Purchase {
     pub status: PurchaseStatus,
     pub timestamp: u64,
     pub transaction_hash: felt252,
+    pub timeout_expiry: u64,
 }
