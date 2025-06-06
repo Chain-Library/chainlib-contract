@@ -977,7 +977,7 @@ pub mod ChainLib {
                 };
                 self.content_verification_requirements.write((content_id, i), default_req);
                 i += 1;
-            }
+            };
 
             // Store new requirements
             let new_count = requirements.len();
@@ -986,7 +986,7 @@ pub mod ChainLib {
                 let req = requirements.at(i);
                 self.content_verification_requirements.write((content_id, i), *req);
                 i += 1;
-            }
+            };
 
             self.content_verification_requirements_count.write(content_id, new_count);
             true
@@ -1004,7 +1004,7 @@ pub mod ChainLib {
                 let req = self.content_verification_requirements.read((content_id, i));
                 requirements.append(req);
                 i += 1;
-            }
+            };
 
             requirements
         }
@@ -1031,7 +1031,7 @@ pub mod ChainLib {
                 };
                 self.content_access_rules.write((content_id, i), empty_rule);
                 i += 1;
-            }
+            };
 
             // Store new rules
             let new_count = rules.len();
@@ -1040,7 +1040,7 @@ pub mod ChainLib {
                 let rule = *rules.at(i);
                 self.content_access_rules.write((content_id, i), rule);
                 i += 1;
-            }
+            };
 
             self.content_access_rules_count.write(content_id, new_count);
             true
@@ -1058,7 +1058,7 @@ pub mod ChainLib {
                 let rule = self.content_access_rules.read((content_id, i));
                 rules.append(rule);
                 i += 1;
-            }
+            };
 
             rules
         }
@@ -1109,7 +1109,7 @@ pub mod ChainLib {
                     break;
                 }
                 i += 1;
-            }
+            };
             status
         }
 
@@ -1707,7 +1707,7 @@ pub mod ChainLib {
                     purchases.append(purchase);
                 }
                 i += 1;
-            }
+            };
 
             // Return the array of purchases
             purchases
@@ -1732,7 +1732,7 @@ pub mod ChainLib {
                     purchases.append(purchase);
                 }
                 i += 1;
-            }
+            };
 
             // Return the array of purchases
             purchases
