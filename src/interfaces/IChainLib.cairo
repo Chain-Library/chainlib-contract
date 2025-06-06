@@ -1,11 +1,11 @@
-use starknet::ContractAddress;
 use core::array::Array;
+use starknet::ContractAddress;
 use crate::base::types::{
-    TokenBoundAccount, User, Role, Rank, Permissions, AccessRule, VerificationRequirement,
-    VerificationType, Purchase, PurchaseStatus,
+    AccessRule, Permissions, Purchase, PurchaseStatus, Rank, Role, TokenBoundAccount, User,
+    VerificationRequirement, VerificationType,
 };
 use crate::chainlib::ChainLib::ChainLib::{
-    Category, Subscription, Payment, ContentType, ContentMetadata, DelegationInfo,
+    Category, ContentMetadata, ContentType, DelegationInfo, Payment, Subscription,
 };
 
 #[starknet::interface]
@@ -206,4 +206,5 @@ pub trait IChainLib<TContractState> {
     fn update_purchase_status(
         ref self: TContractState, purchase_id: u256, status: PurchaseStatus,
     ) -> bool;
+    fn get_content_purchases(ref self: TContractState, content_id: felt252) -> Array<Purchase>;
 }

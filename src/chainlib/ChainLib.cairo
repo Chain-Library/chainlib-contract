@@ -1,24 +1,20 @@
 #[starknet::contract]
 pub mod ChainLib {
-    use core::array::Array;
-    use core::array::ArrayTrait;
+    use core::array::{Array, ArrayTrait};
     use core::option::OptionTrait;
     use core::traits::Into;
     use starknet::storage::{
         Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess, Vec, VecTrait,
     };
-
-
     use starknet::{
-        ContractAddress, get_block_timestamp, get_caller_address, contract_address_const,
+        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
+    };
+    use crate::base::types::{
+        AccessRule, AccessType, Permissions, Purchase, PurchaseStatus, Rank, Role, Status,
+        TokenBoundAccount, User, VerificationRequirement, VerificationType, permission_flags,
     };
     use crate::interfaces::IChainLib::IChainLib;
-
-    use crate::base::types::{
-        TokenBoundAccount, User, Role, Rank, Permissions, permission_flags, AccessRule, AccessType,
-        Status, VerificationRequirement, VerificationType, Purchase, PurchaseStatus,
-    };
 
     // Define delegation-specific structures and constants
 
@@ -112,60 +108,88 @@ pub mod ChainLib {
 
     #[storage]
     struct Storage {
-        admin: ContractAddress,
-        current_account_id: u256,
-        accounts: Map<u256, TokenBoundAccount>,
-        accountsaddr: Map<ContractAddress, TokenBoundAccount>,
-        next_course_id: u256,
-        user_id: u256,
-        users: Map<u256, User>,
-        creators_content: Map::<ContractAddress, ContentMetadata>,
-        content: Map::<felt252, ContentMetadata>,
-        content_tags: Map::<ContentMetadata, Array<felt252>>,
-        // Subscription related storage
-        subscription_id: u256,
-        subscriptions: Map::<u256, Subscription>,
-        // Instead of storing arrays directly, we'll use a counter-based approach
-        user_subscription_count: Map::<ContractAddress, u256>,
-        user_subscription_by_index: Map::<(ContractAddress, u256), u256>,
-        payment_id: u256,
-        payments: Map::<u256, Payment>,
-        // Similar counter-based approach for subscription payments
-        subscription_payment_count: Map::<u256, u256>,
-        subscription_payment_by_index: Map::<(u256, u256), u256>,
-        next_content_id: felt252,
-        user_by_address: Map<ContractAddress, User>,
-        operator_permissions: Map::<(u256, ContractAddress), Permissions>,
-        content_access: Map::<felt252, ContentAccess>,
-        premium_content_access: Map::<(u256, felt252), bool>,
-        access_cache: Map::<(u256, felt252), AccessCache>,
-        access_blacklist: Map::<(u256, felt252), bool>,
-        cache_ttl: u64,
-        delegations: Map::<(ContractAddress, u64), DelegationInfo>,
-        delegation_nonces: Map::<ContractAddress, u64>,
-        delegation_history: Map::<(ContractAddress, ContractAddress), u64>,
-        content_access_rules_count: Map<felt252, u32>,
-        content_access_rules: Map<(felt252, u32), AccessRule>,
-        user_content_permissions: Map<(ContractAddress, felt252), Permissions>,
-        content_verification_requirements_count: Map<felt252, u32>,
-        content_verification_requirements: Map<(felt252, u32), VerificationRequirement>,
-        user_verifications: Map<(ContractAddress, VerificationType), bool>,
-        user_identity_verifications: Map<ContractAddress, bool>,
-        user_payment_verifications: Map<ContractAddress, bool>,
-        user_reputation_verifications: Map<ContractAddress, bool>,
-        user_ownership_verifications: Map<ContractAddress, bool>,
-        user_custom_verifications: Map<ContractAddress, bool>,
-        content_prices: Map::<felt252, u256>, // Maps content_id to price
-        next_purchase_id: u256, // Tracking the next available purchase ID
-        purchases: Map::<u256, Purchase>, // Store purchases by ID
-        user_purchase_count: Map::<ContractAddress, u32>, // Count of purchases per user
-        user_purchase_ids: Map::<
-            (ContractAddress, u32), u256,
-        >, // Map of (user, index) to purchase ID
-        content_purchase_count: Map::<felt252, u32>, // Count of purchases per content
-        content_purchase_ids: Map::<
-            (felt252, u32), u256,
-        > // Map of (content_id, index) to purchase ID
+        admin: ContractAddress, // Address of the contract admin
+        current_account_id: u256, // Counter for token-bound account IDs
+        accounts: Map<u256, TokenBoundAccount>, // Maps account ID to TokenBoundAccount
+        accountsaddr: Map<ContractAddress, TokenBoundAccount>, // Maps address to TokenBoundAccount
+        next_course_id: u256, // Counter for course IDs (unused?)
+        user_id: u256, // Counter for user IDs
+        users: Map<u256, User>, // Maps user ID to User
+        creators_content: Map<
+            ContractAddress, ContentMetadata,
+        >, // Maps creator address to their content
+        content: Map<felt252, ContentMetadata>, // Maps content ID to ContentMetadata
+        content_tags: Map<ContentMetadata, Array<felt252>>, // Maps content to associated tags
+        subscription_id: u256, // Counter for subscription IDs
+        subscriptions: Map<u256, Subscription>, // Maps subscription ID to Subscription
+        user_subscription_count: Map<ContractAddress, u256>, // Count of subscriptions per user
+        user_subscription_by_index: Map<
+            (ContractAddress, u256), u256,
+        >, // Maps (user, index) to subscription ID
+        payment_id: u256, // Counter for payment IDs
+        payments: Map<u256, Payment>, // Maps payment ID to Payment
+        subscription_payment_count: Map<u256, u256>, // Count of payments per subscription
+        subscription_payment_by_index: Map<
+            (u256, u256), u256,
+        >, // Maps (subscription_id, index) to payment ID
+        next_content_id: felt252, // Counter for content IDs
+        user_by_address: Map<ContractAddress, User>, // Maps user address to User
+        operator_permissions: Map<
+            (u256, ContractAddress), Permissions,
+        >, // Maps (account_id, operator) to Permissions
+        content_access: Map<felt252, ContentAccess>, // Maps content ID to access configuration
+        premium_content_access: Map<
+            (u256, felt252), bool,
+        >, // Maps (user_id, content_id) to premium access status
+        access_cache: Map<
+            (u256, felt252), AccessCache,
+        >, // Maps (user_id, content_id) to cached access status
+        access_blacklist: Map<
+            (u256, felt252), bool,
+        >, // Maps (user_id, content_id) to blacklist status
+        cache_ttl: u64, // Cache time-to-live in seconds
+        delegations: Map<
+            (ContractAddress, u64), DelegationInfo,
+        >, // Maps (delegator, permission) to DelegationInfo
+        delegation_nonces: Map<ContractAddress, u64>, // Nonce for tracking delegations
+        delegation_history: Map<
+            (ContractAddress, ContractAddress), u64,
+        >, // Tracks delegation history
+        content_access_rules_count: Map<felt252, u32>, // Count of access rules per content
+        content_access_rules: Map<
+            (felt252, u32), AccessRule,
+        >, // Maps (content_id, index) to AccessRule
+        user_content_permissions: Map<
+            (ContractAddress, felt252), Permissions,
+        >, // Maps (user, content_id) to Permissions
+        content_verification_requirements_count: Map<
+            felt252, u32,
+        >, // Count of verification requirements per content
+        content_verification_requirements: Map<
+            (felt252, u32), VerificationRequirement,
+        >, // Maps (content_id, index) to VerificationRequirement
+        user_verifications: Map<
+            (ContractAddress, VerificationType), bool,
+        >, // Maps (user, verification_type) to verification status
+        user_identity_verifications: Map<
+            ContractAddress, bool,
+        >, // Identity verification status for users
+        user_payment_verifications: Map<
+            ContractAddress, bool,
+        >, // Payment verification status for users
+        user_reputation_verifications: Map<
+            ContractAddress, bool,
+        >, // Reputation verification status for users
+        user_ownership_verifications: Map<
+            ContractAddress, bool,
+        >, // Ownership verification status for users
+        user_custom_verifications: Map<
+            ContractAddress, bool,
+        >, // Custom verification status for users
+        content_prices: Map<felt252, u256>, // Maps content_id to price
+        next_purchase_id: u256, // Counter for purchase IDs
+        purchases: Map<u256, Purchase>, // Maps purchase ID to Purchase
+        purchase_timeout_duration: u64,
     }
 
 
@@ -175,6 +199,7 @@ pub mod ChainLib {
         self.admin.write(admin);
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
+        self.purchase_timeout_duration.write(3600);
     }
 
     #[event]
@@ -1068,7 +1093,7 @@ pub mod ChainLib {
                 if req.valid_until != 0 && req.valid_until < current_time {
                     i += 1;
                     continue;
-                };
+                }
 
                 // Check verification status based on type
                 let is_verified = match req.requirement_type {
@@ -1082,7 +1107,7 @@ pub mod ChainLib {
                 if !is_verified {
                     status = false;
                     break;
-                };
+                }
                 i += 1;
             };
             status
@@ -1114,7 +1139,7 @@ pub mod ChainLib {
                 VerificationType::Custom => {
                     self.user_custom_verifications.write(user, is_verified);
                 },
-            };
+            }
 
             self
                 .emit(
@@ -1619,50 +1644,34 @@ pub mod ChainLib {
         fn purchase_content(
             ref self: ContractState, content_id: felt252, transaction_hash: felt252,
         ) -> u256 {
-            // Validate input parameters
             assert!(content_id != 0, "Content ID cannot be empty");
             assert!(transaction_hash != 0, "Transaction hash cannot be empty");
 
-            // Get the price for the content
             let price = self.content_prices.read(content_id);
-            assert!(price > 0, "Content either doesn't exist");
+            assert!(price > 0, "Content either doesn't exist or has no price");
 
-            // Get the buyer's address
             let buyer = get_caller_address();
+            let current_time = get_block_timestamp();
 
-            // Get the next purchase ID and increment for future use
             let purchase_id = self.next_purchase_id.read();
             self.next_purchase_id.write(purchase_id + 1);
 
-            // Create the purchase record
             let purchase = Purchase {
                 id: purchase_id,
                 content_id: content_id,
                 buyer: buyer,
                 price: price,
                 status: PurchaseStatus::Pending,
-                timestamp: get_block_timestamp(),
+                timestamp: current_time,
                 transaction_hash: transaction_hash,
+                timeout_expiry: current_time + self.purchase_timeout_duration.read(),
             };
 
-            // Store the purchase in the purchases mapping
             self.purchases.write(purchase_id, purchase);
 
-            // Add the purchase ID to the user's purchase list
-            let user_purchase_count = self.user_purchase_count.read(buyer);
-            self.user_purchase_ids.write((buyer, user_purchase_count), purchase_id);
-            self.user_purchase_count.write(buyer, user_purchase_count + 1);
-
-            // Add the purchase ID to the content's purchase list
-            let content_purchase_count = self.content_purchase_count.read(content_id);
-            self.content_purchase_ids.write((content_id, content_purchase_count), purchase_id);
-            self.content_purchase_count.write(content_id, content_purchase_count + 1);
-
-            // Emit event for the purchase
             let timestamp = get_block_timestamp();
             self.emit(ContentPurchased { purchase_id, content_id, buyer, price, timestamp });
 
-            // Return the purchase ID
             purchase_id
         }
 
@@ -1688,23 +1697,40 @@ pub mod ChainLib {
             // Initialize an empty array to hold the purchases
             let mut purchases: Array<Purchase> = ArrayTrait::new();
 
-            // Get the number of purchases for this user
-            let purchase_count = self.user_purchase_count.read(user_address);
+            // Iterate through all purchase IDs up to next_purchase_id
+            let total_purchases = self.next_purchase_id.read();
+            let mut i: u256 = 1; // Start from 1 as purchase IDs begin at 1
 
-            // Iterate through the purchase IDs and fetch each purchase
-            let mut i: u32 = 0;
+            while i < total_purchases {
+                let purchase = self.purchases.read(i);
+                if purchase.buyer == user_address {
+                    purchases.append(purchase);
+                }
+                i += 1;
+            };
 
-            while i < purchase_count {
-                // Get the purchase ID at the current index
-                let purchase_id = self.user_purchase_ids.read((user_address, i));
+            // Return the array of purchases
+            purchases
+        }
 
-                // Fetch the purchase details using the ID
-                let purchase = self.purchases.read(purchase_id);
+        /// @notice Retrieves all purchases for a specific content item.
+        /// @dev Iterates through the purchases mapping to find purchases for the given content_id.
+        /// @param self The contract state reference.
+        /// @param content_id The unique identifier of the content.
+        /// @return Array<Purchase> An array of purchase records for the content.
+        fn get_content_purchases(ref self: ContractState, content_id: felt252) -> Array<Purchase> {
+            // Initialize an empty array to hold the purchases
+            let mut purchases: Array<Purchase> = ArrayTrait::new();
 
-                // Add the purchase to the array
-                purchases.append(purchase);
+            // Iterate through all purchase IDs up to next_purchase_id
+            let total_purchases = self.next_purchase_id.read();
+            let mut i: u256 = 1; // Start from 1 as purchase IDs begin at 1
 
-                // Move to the next index
+            while i < total_purchases {
+                let purchase = self.purchases.read(i);
+                if purchase.content_id == content_id {
+                    purchases.append(purchase);
+                }
                 i += 1;
             };
 
