@@ -1,9 +1,9 @@
 use core::array::Array;
 use starknet::ContractAddress;
 use crate::base::types::{
-    AccessRule, FailureRecovery, Permissions, Purchase, PurchaseStatus, Rank,
-    RecoveryType, Role, SuspiciousActivityType, TokenBoundAccount,
-    TransactionLimits, User, VerificationRequirement, VerificationType,
+    AccessRule, FailureRecovery, Permissions, Purchase, PurchaseStatus, Rank, RecoveryType, Role,
+    SuspiciousActivityType, TokenBoundAccount, TransactionLimits, User, VerificationRequirement,
+    VerificationType,
 };
 use crate::chainlib::ChainLib::ChainLib::{
     Category, ContentMetadata, ContentType, DelegationInfo, Subscription,

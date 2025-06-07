@@ -1,16 +1,14 @@
 #[starknet::contract]
 pub mod ChainLib {
     use core::array::{Array, ArrayTrait};
+    use core::num::traits::Zero;
     use core::option::OptionTrait;
     use core::traits::Into;
-    use core::num::traits::Zero;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use starknet::{
-        ContractAddress, get_block_timestamp, get_caller_address, get_contract_address,
-    };
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address, get_contract_address};
     use crate::base::errors::{payment_safety_errors, permission_errors};
     use crate::base::types::{
         AccessRule, AccessType, EmergencyState, FailureRecovery, Permissions, Purchase,
@@ -44,7 +42,7 @@ pub mod ChainLib {
         pub active: bool // Whether this delegation is active
     }
 
-    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug, Hash)]
     pub enum ContentType {
         #[default]
         Text,
@@ -53,7 +51,7 @@ pub mod ChainLib {
         // Any other content type
     }
 
-    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug, Hash)]
     pub enum Category {
         Software,
         #[default]
@@ -62,7 +60,7 @@ pub mod ChainLib {
         Art,
     }
 
-    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug, Hash)]
     pub struct ContentMetadata {
         pub content_id: felt252,
         pub title: felt252,
@@ -121,8 +119,8 @@ pub mod ChainLib {
         users: Map<u256, User>,
         creators_content: Map<ContractAddress, ContentMetadata>,
         content: Map<felt252, ContentMetadata>,
-        #[allow(starknet::invalid_storage_member_types)]
-        content_tags: Map<ContentMetadata, Array<felt252>>,
+        content_tags_count: Map<felt252, u32>,
+        content_tags: Map<(felt252, u32), felt252>,
         // Subscription related storage
         subscription_id: u256,
         subscriptions: Map<u256, Subscription>,
@@ -150,8 +148,6 @@ pub mod ChainLib {
         user_content_permissions: Map<(ContractAddress, felt252), Permissions>,
         content_verification_requirements_count: Map<felt252, u32>,
         content_verification_requirements: Map<(felt252, u32), VerificationRequirement>,
-        #[allow(starknet::invalid_storage_member_types)]
-        user_verifications: Map<(ContractAddress, VerificationType), bool>,
         user_identity_verifications: Map<ContractAddress, bool>,
         user_payment_verifications: Map<ContractAddress, bool>,
         user_reputation_verifications: Map<ContractAddress, bool>,
@@ -2051,7 +2047,10 @@ pub mod ChainLib {
                 // Block user if risk score is too high
                 if new_risk >= 9 {
                     self.blocked_users.write(user, true);
-                    self.emit(UserBlocked { user, reason: transaction_type, timestamp: current_time });
+                    self
+                        .emit(
+                            UserBlocked { user, reason: transaction_type, timestamp: current_time },
+                        );
                 }
 
                 self
@@ -2075,7 +2074,8 @@ pub mod ChainLib {
             let caller = get_caller_address();
             let admin = self.admin.read();
             assert(
-                caller == admin || caller == get_contract_address(), permission_errors::NO_PERMISSION,
+                caller == admin || caller == get_contract_address(),
+                permission_errors::NO_PERMISSION,
             );
 
             let current_time = get_block_timestamp();
@@ -2119,10 +2119,7 @@ pub mod ChainLib {
             self
                 .emit(
                     SuspiciousActivityDetected {
-                        user,
-                        activity_type,
-                        risk_score: new_risk,
-                        timestamp: current_time,
+                        user, activity_type, risk_score: new_risk, timestamp: current_time,
                     },
                 );
 
@@ -2175,7 +2172,8 @@ pub mod ChainLib {
             let mut emergency_state = self.emergency_state.read();
 
             // Remove functions from paused list (using bitwise operations)
-            emergency_state.paused_functions = emergency_state.paused_functions & (functions_to_resume ^ 0xFFFFFFFFFFFFFFFF);
+            emergency_state.paused_functions = emergency_state.paused_functions
+                & (functions_to_resume ^ 0xFFFFFFFFFFFFFFFF);
 
             // If no functions are paused, resume normal operations
             if emergency_state.paused_functions == 0 {
@@ -2208,9 +2206,7 @@ pub mod ChainLib {
             (emergency_state.paused_functions & function_flag) != 0
         }
 
-        fn set_emergency_admin(
-            ref self: ContractState, emergency_admin: ContractAddress,
-        ) -> bool {
+        fn set_emergency_admin(ref self: ContractState, emergency_admin: ContractAddress) -> bool {
             // Only admin can set emergency admin
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Admin only');
@@ -2225,9 +2221,7 @@ pub mod ChainLib {
             self
                 .emit(
                     EmergencyAdminUpdated {
-                        old_admin,
-                        new_admin: emergency_admin,
-                        timestamp: get_block_timestamp(),
+                        old_admin, new_admin: emergency_admin, timestamp: get_block_timestamp(),
                     },
                 );
 
@@ -2289,30 +2283,20 @@ pub mod ChainLib {
 
             // Perform recovery based on type
             match recovery.recovery_type {
-                RecoveryType::PaymentRecovery => {
-                    // Reset payment-related issues
-                    // Implementation depends on specific requirements
+                RecoveryType::PaymentRecovery => { // Implementation depends on specific requirements
                 },
-                RecoveryType::AccountRecovery => {
-                    // Reset account-related issues
-                    // Implementation depends on specific requirements
+                RecoveryType::AccountRecovery => { // Implementation depends on specific requirements
                 },
-                RecoveryType::EmergencyWithdrawal => {
-                    // Handle emergency withdrawal
-                    // Implementation depends on specific requirements
+                RecoveryType::EmergencyWithdrawal => { // Implementation depends on specific requirements
                 },
-                RecoveryType::SystemRestore => {
-                    // Restore system to previous state
-                    // Implementation depends on specific requirements
+                RecoveryType::SystemRestore => { // Implementation depends on specific requirements
                 },
             }
 
             self
                 .emit(
                     RecoveryExecuted {
-                        recovery_key,
-                        executed_by: get_caller_address(),
-                        timestamp: current_time,
+                        recovery_key, executed_by: get_caller_address(), timestamp: current_time,
                     },
                 );
 

@@ -96,7 +96,7 @@ pub struct VerificationRequirement {
     pub valid_until: u64,
 }
 
-#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug, Hash)]
 pub enum VerificationType {
     #[default]
     Identity,
@@ -104,6 +104,12 @@ pub enum VerificationType {
     Reputation,
     Ownership,
     Custom,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, Hash, Debug)]
+pub struct UserVerificationKey {
+    pub user: ContractAddress,
+    pub verification_type: VerificationType,
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
