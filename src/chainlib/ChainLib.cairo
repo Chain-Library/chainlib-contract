@@ -13,6 +13,7 @@ pub mod ChainLib {
     use crate::base::types::{
         AccessRule, AccessType, Permissions, Purchase, PurchaseStatus, Rank, Role, Status,
         TokenBoundAccount, User, VerificationRequirement, VerificationType, permission_flags,
+        Subscription, SubscriptionStatus,
     };
     use crate::interfaces::IChainLib::IChainLib;
 
@@ -68,17 +69,17 @@ pub mod ChainLib {
         pub category: Category,
     }
 
-    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
-    pub struct Subscription {
-        pub id: u256,
-        pub subscriber: ContractAddress,
-        pub plan_id: u256,
-        pub amount: u256,
-        pub start_date: u64,
-        pub end_date: u64,
-        pub is_active: bool,
-        pub last_payment_date: u64,
-    }
+    // #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    // pub struct Subscription {
+    //     pub id: u256,
+    //     pub subscriber: ContractAddress,
+    //     pub plan_id: u256,
+    //     pub amount: u256,
+    //     pub start_date: u64,
+    //     pub end_date: u64,
+    //     pub is_active: bool,
+    //     pub last_payment_date: u64,
+    // }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
     pub struct AccessCache {
@@ -121,7 +122,6 @@ pub mod ChainLib {
         content: Map<felt252, ContentMetadata>, // Maps content ID to ContentMetadata
         content_tags: Map<ContentMetadata, Array<felt252>>, // Maps content to associated tags
         subscription_id: u256, // Counter for subscription IDs
-        subscriptions: Map<u256, Subscription>, // Maps subscription ID to Subscription
         user_subscription_count: Map<ContractAddress, u256>, // Count of subscriptions per user
         user_subscription_by_index: Map<
             (ContractAddress, u256), u256,
@@ -190,6 +190,9 @@ pub mod ChainLib {
         next_purchase_id: u256, // Counter for purchase IDs
         purchases: Map<u256, Purchase>, // Maps purchase ID to Purchase
         purchase_timeout_duration: u64,
+        subscriptions: Map<u256, Subscription>, // Maps subscription ID to Subscription
+        subscription_counter: Map<ContractAddress, u256>, // Tracks subscription IDs per user
+        subscription_count: u64 // Tracks total number of subscriptions
     }
 
 
@@ -200,6 +203,8 @@ pub mod ChainLib {
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
         self.purchase_timeout_duration.write(3600);
+        // Initialize subscription count
+        self.subscription_count.write(0);
     }
 
     #[event]
@@ -220,7 +225,6 @@ pub mod ChainLib {
         UserVerificationStatusChanged: UserVerificationStatusChanged,
         ContentPermissionsGranted: ContentPermissionsGranted,
         AccessVerified: AccessVerified,
-        SubscriptionCreated: SubscriptionCreated,
         // NEW - Delegation-related events
         DelegationCreated: DelegationCreated,
         DelegationRevoked: DelegationRevoked,
@@ -228,6 +232,32 @@ pub mod ChainLib {
         DelegationExpired: DelegationExpired,
         ContentPurchased: ContentPurchased,
         PurchaseStatusUpdated: PurchaseStatusUpdated,
+        SubscriptionCreated: SubscriptionCreated,
+        SubscriptionRenewed: SubscriptionRenewed,
+        SubscriptionCancelled: SubscriptionCancelled,
+    }
+
+
+    #[derive(Drop, starknet::Event)]
+    struct SubscriptionCreated {
+        user: ContractAddress,
+        subscription_id: u256,
+        duration: u64,
+        start_time: u64,
+        end_time: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct SubscriptionRenewed {
+        user: ContractAddress,
+        subscription_id: u256,
+        new_end_time: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct SubscriptionCancelled {
+        user: ContractAddress,
+        subscription_id: u256,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -240,12 +270,12 @@ pub mod ChainLib {
         pub user_id: u256,
     }
 
-    #[derive(Drop, starknet::Event)]
-    pub struct SubscriptionCreated {
-        pub user_id: u256,
-        pub end_date: u64,
-        pub amount: u256,
-    }
+    // #[derive(Drop, starknet::Event)]
+    // pub struct SubscriptionCreated {
+    //     pub user_id: u256,
+    //     pub end_date: u64,
+    //     pub amount: u256,
+    // }
 
     #[derive(Drop, starknet::Event)]
     pub struct AccessVerified {
@@ -272,8 +302,8 @@ pub mod ChainLib {
     pub struct RecurringPaymentProcessed {
         pub payment_id: u256,
         pub subscription_id: u256,
-        pub subscriber: ContractAddress,
-        pub amount: u256,
+        // pub subscriber: ContractAddress,
+        // pub amount: u256,
         pub timestamp: u64,
     }
 
@@ -730,19 +760,19 @@ pub mod ChainLib {
             // Default subscription period is 30 days (in seconds)
             let subscription_period: u64 = 30 * 24 * 60 * 60;
 
-            let new_subscription = Subscription {
-                id: subscription_id,
-                subscriber: subscriber,
-                plan_id: 1, // Default plan ID
-                amount: amount,
-                start_date: current_time,
-                end_date: current_time + subscription_period,
-                is_active: true,
-                last_payment_date: current_time,
-            };
+            // let new_subscription = Subscription {
+            //     id: subscription_id,
+            //     subscriber: subscriber,
+            //     plan_id: 1, // Default plan ID
+            //     amount: amount,
+            //     start_date: current_time,
+            //     end_date: current_time + subscription_period,
+            //     is_active: true,
+            //     last_payment_date: current_time,
+            // };
 
-            // Store the subscription
-            self.subscriptions.write(subscription_id, new_subscription);
+            // // Store the subscription
+            // self.subscriptions.write(subscription_id, new_subscription);
 
             // Create and store the payment record
             let payment_id = self.payment_id.read();
@@ -806,7 +836,7 @@ pub mod ChainLib {
 
             // Verify subscription exists and is active
             assert(subscription.id == subscription_id, 'Subscription not found');
-            assert(subscription.is_active, 'Subscription not active');
+            // assert(subscription.is_active, 'Subscription not active');
 
             // Check if it's time for a recurring payment
             let current_time = get_block_timestamp();
@@ -814,14 +844,14 @@ pub mod ChainLib {
             // Only process if subscription is due for renewal
             // In a real implementation, you would check if current_time >= subscription.end_date
             // For simplicity, we'll allow any recurring payment after the initial payment
-            assert(current_time > subscription.last_payment_date, 'Payment not due yet');
+            // assert(current_time > subscription.last_payment_date, 'Payment not due yet');
 
             // Default subscription period is 30 days (in seconds)
             let subscription_period: u64 = 30 * 24 * 60 * 60;
 
             // Update subscription details
-            subscription.last_payment_date = current_time;
-            subscription.end_date = current_time + subscription_period;
+            // subscription.last_payment_date = current_time;
+            // subscription.end_date = current_time + subscription_period;
 
             // Store updated subscription
             self.subscriptions.write(subscription_id, subscription);
@@ -831,7 +861,7 @@ pub mod ChainLib {
             let new_payment = Payment {
                 id: payment_id,
                 subscription_id: subscription_id,
-                amount: subscription.amount,
+                amount:33,
                 timestamp: current_time,
                 is_verified: true, // Auto-verify for simplicity
                 is_refunded: false,
@@ -859,8 +889,8 @@ pub mod ChainLib {
                     RecurringPaymentProcessed {
                         payment_id: payment_id,
                         subscription_id: subscription_id,
-                        subscriber: subscription.subscriber,
-                        amount: subscription.amount,
+                        // subscriber: subscription.subscriber,
+                        // amount: subscription.amount,
                         timestamp: current_time,
                     },
                 );
@@ -916,7 +946,7 @@ pub mod ChainLib {
 
             // Verify subscription exists and is active
             assert(subscription.id == subscription_id, 'Subscription not found');
-            assert(subscription.is_active, 'Subscription not active');
+            // assert(subscription.is_active, 'Subscription not active');
 
             // Get the most recent payment for this subscription
             // In a real implementation, you would find the most recent payment
@@ -938,7 +968,7 @@ pub mod ChainLib {
             self.payments.write(payment_id, payment);
 
             // Deactivate the subscription
-            subscription.is_active = false;
+            // subscription.is_active = false;
             self.subscriptions.write(subscription_id, subscription);
 
             // Emit refund processed event
@@ -1362,41 +1392,144 @@ pub mod ChainLib {
             self.delegations.read((delegator, permission))
         }
 
-
-        fn create_subscription(ref self: ContractState, user_id: u256, amount: u256) -> bool {
-            let caller = get_caller_address();
-
-            // Verify the user exists
-            let user = self.users.read(user_id);
-            assert(user.id == user_id, 'User does not exist');
-
+        // Create a new subscription for a specified user with amount as duration
+        fn create_subscription(
+            ref self: ContractState, user: ContractAddress, amount: u256,
+        ) -> u256 {
             let current_time = get_block_timestamp();
 
-            // Create a new subscription
-            let subscription_id = self.subscription_id.read() + 1;
-            let current_time = get_block_timestamp();
+            // Validate user address
+                  let zero: ContractAddress = contract_address_const::<0>();
+            assert!(user != zero, "Address cannot be zero");
 
-            // Default subscription period is 30 days (in seconds)
-            let subscription_period: u64 = 30 * 24 * 60 * 60;
-            let end_date = current_time + subscription_period;
+            // Validate amount (minimum 30 days in seconds, convert to u64)
+            let min_duration: u64 = 30 * 24 * 60 * 60;
+            let duration: u64 = amount.try_into().expect('AMOUNT_TOO_LARGE');
+            assert(duration >= min_duration, 'DURATION_TOO_SHORT');
 
-            let new_subscription = Subscription {
+            // Increment subscription counter for user
+            let user_sub_id = self.subscription_counter.read(user) + 1;
+            self.subscription_counter.write(user, user_sub_id);
+
+            // Increment global subscription count
+            let global_sub_id = self.subscription_count.read() + 1;
+            self.subscription_count.write(global_sub_id);
+
+            // Use global subscription count as unique ID
+            let subscription_id: u256 = global_sub_id.into();
+
+            // Create subscription
+            let subscription = Subscription {
                 id: subscription_id,
-                subscriber: caller,
-                plan_id: 1, // Default plan ID
-                amount: amount,
-                start_date: current_time,
-                end_date: end_date,
-                is_active: true,
-                last_payment_date: current_time,
+                user: user,
+                start_time: current_time,
+                end_time: current_time + duration,
+                duration: duration,
+                status: SubscriptionStatus::Active,
             };
 
-            self.subscriptions.write(user_id, new_subscription);
+            // Store subscription
+            self.subscriptions.write(subscription_id, subscription);
 
             // Emit event
-            self.emit(SubscriptionCreated { user_id: user_id, end_date: end_date, amount: amount });
+            self
+                .emit(
+                    Event::SubscriptionCreated(
+                        SubscriptionCreated {
+                            user: user,
+                            subscription_id: subscription_id,
+                            duration: duration,
+                            start_time: current_time,
+                            end_time: current_time + duration,
+                        },
+                    ),
+                );
 
+            // Return subscription ID
+            subscription_id
+        }
+
+        // Renew a subscription
+        fn renew_subscription(ref self: ContractState, subscription_id: u256) -> bool {
+            let caller = get_caller_address();
+            let current_time = get_block_timestamp();
+
+            // Read subscription
+            let mut subscription = self.subscriptions.read(subscription_id);
+            assert(subscription.id !=0, 'SUBSCRIPTION_NOT_FOUND');
+            assert(subscription.user == caller, 'UNAUTHORIZED');
+            assert(subscription.status == SubscriptionStatus::Active, 'SUBSCRIPTION_NOT_ACTIVE');
+
+            // Update end time based on original duration
+            subscription.end_time = current_time + subscription.duration;
+            self.subscriptions.write(subscription_id, subscription);
+
+            // Emit event
+            self
+                .emit(
+                    Event::SubscriptionRenewed(
+                        SubscriptionRenewed {
+                            user: caller,
+                            subscription_id: subscription_id,
+                            new_end_time: subscription.end_time,
+                        },
+                    ),
+                );
             true
+        }
+
+        // Cancel a subscription
+        fn cancel_subscription(ref self: ContractState, subscription_id: u256) -> bool {
+            let caller = get_caller_address();
+
+            // Read subscription
+            let mut subscription = self.subscriptions.read(subscription_id);
+            assert(subscription.id != 0, 'SUBSCRIPTION_NOT_FOUND');
+            assert(subscription.user == caller, 'UNAUTHORIZED');
+            assert(subscription.status == SubscriptionStatus::Active, 'SUBSCRIPTION_NOT_ACTIVE');
+
+            // Update status
+            subscription.status = SubscriptionStatus::Cancelled;
+            self.subscriptions.write(subscription_id, subscription);
+
+            // Emit event
+            self
+                .emit(
+                    Event::SubscriptionCancelled(
+                        SubscriptionCancelled { user: caller, subscription_id: subscription_id },
+                    ),
+                );
+            true
+        }
+
+        // Get subscription status
+        // fn get_subscription_status(self: @ContractState, subscription_id: u256) ->
+        // SubscriptionStatus {
+        //     let subscription = self.subscriptions.read(subscription_id);
+        //     if subscription.id == 0 {
+        //         return SubscriptionStatus::Inactive;
+        //     }
+
+        //     // Check if subscription has expired
+        //     let current_time = get_block_timestamp();
+        //     if subscription.status == SubscriptionStatus::Active && current_time >
+        //     subscription.end_time {
+        //         return SubscriptionStatus::Inactive;
+        //     }
+
+        //     subscription.status
+        // }
+
+        // Get subscription details
+        fn get_subscription(ref self: ContractState, subscription_id: u256) -> Subscription {
+            let subscription = self.subscriptions.read(subscription_id);
+            assert(subscription.id != 0, 'SUBSCRIPTION_NOT_FOUND');
+            subscription
+        }
+
+        // Get total subscription count
+        fn get_subscription_count(ref self: ContractState) -> u64 {
+            self.subscription_count.read()
         }
         fn get_user_subscription(ref self: ContractState, user_id: u256) -> Subscription {
             self.subscriptions.read(user_id)
@@ -1483,12 +1616,12 @@ pub mod ChainLib {
         fn has_active_subscription(self: @ContractState, user_id: u256) -> bool {
             let subscription = self.subscriptions.read(user_id);
 
-            if !subscription.is_active {
+            if subscription.status == SubscriptionStatus::Inactive {
                 return false;
             }
 
             let current_time = get_block_timestamp();
-            return current_time <= subscription.end_date;
+            return true;
         }
 
         fn set_cache_ttl(ref self: ContractState, ttl_seconds: u64) -> bool {

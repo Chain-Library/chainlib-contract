@@ -2,10 +2,10 @@ use core::array::Array;
 use starknet::ContractAddress;
 use crate::base::types::{
     AccessRule, Permissions, Purchase, PurchaseStatus, Rank, Role, TokenBoundAccount, User,
-    VerificationRequirement, VerificationType,
+    VerificationRequirement, VerificationType, Subscription, SubscriptionStatus,
 };
 use crate::chainlib::ChainLib::ChainLib::{
-    Category, ContentMetadata, ContentType, DelegationInfo, Payment, Subscription,
+    Category, ContentMetadata, ContentType, DelegationInfo, Payment,
 };
 
 #[starknet::interface]
@@ -167,8 +167,6 @@ pub trait IChainLib<TContractState> {
         self: @TContractState, delegator: ContractAddress, permission: u64,
     ) -> DelegationInfo;
 
-    fn create_subscription(ref self: TContractState, user_id: u256, amount: u256) -> bool;
-
     fn get_user_subscription(ref self: TContractState, user_id: u256) -> Subscription;
 
     fn grant_premium_access(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
@@ -207,4 +205,11 @@ pub trait IChainLib<TContractState> {
         ref self: TContractState, purchase_id: u256, status: PurchaseStatus,
     ) -> bool;
     fn get_content_purchases(ref self: TContractState, content_id: felt252) -> Array<Purchase>;
+    fn create_subscription(ref self: TContractState, user: ContractAddress, amount: u256) -> u256;
+    fn get_subscription_count(ref self: TContractState) -> u64;
+    fn cancel_subscription(ref self: TContractState, subscription_id: u256) -> bool;
+    fn renew_subscription(ref self: TContractState, subscription_id: u256) -> bool;
+    // fn get_subscription_status(ref self: TContractState, subscription_id: u256) ->
+    // SubscriptionStatus
+    fn get_subscription(ref self: TContractState, subscription_id: u256) -> Subscription;
 }

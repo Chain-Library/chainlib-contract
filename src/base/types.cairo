@@ -147,3 +147,21 @@ pub struct Purchase {
     pub transaction_hash: felt252,
     pub timeout_expiry: u64,
 }
+
+
+#[derive(Copy, Drop, Serde, PartialEq, starknet::Store, Debug)]
+pub struct Subscription {
+    pub id: u256, // Subscription ID
+    pub user: ContractAddress,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub duration: u64,
+    pub status: SubscriptionStatus,
+}
+#[derive(Copy, Drop, Serde, starknet::Store, Clone, PartialEq, Debug)]
+pub enum SubscriptionStatus {
+    #[default]
+    Active,
+    Inactive,
+    Cancelled,
+}
