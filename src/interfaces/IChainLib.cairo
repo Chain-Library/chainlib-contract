@@ -5,7 +5,7 @@ use crate::base::types::{
     VerificationRequirement, VerificationType,
 };
 use crate::chainlib::ChainLib::ChainLib::{
-    Category, ContentMetadata, ContentType, DelegationInfo, Payment, Subscription,
+    Category, ContentMetadata, ContentType, DelegationInfo, Payment, PlanType, Subscription,
 };
 
 #[starknet::interface]
@@ -167,7 +167,9 @@ pub trait IChainLib<TContractState> {
         self: @TContractState, delegator: ContractAddress, permission: u64,
     ) -> DelegationInfo;
 
-    fn create_subscription(ref self: TContractState, user_id: u256, amount: u256) -> bool;
+    fn create_subscription(
+        ref self: TContractState, user_id: u256, amount: u256, plan_type: u32,
+    ) -> bool;
 
     fn get_user_subscription(ref self: TContractState, user_id: u256) -> Subscription;
 
@@ -207,4 +209,6 @@ pub trait IChainLib<TContractState> {
         ref self: TContractState, purchase_id: u256, status: PurchaseStatus,
     ) -> bool;
     fn get_content_purchases(ref self: TContractState, content_id: felt252) -> Array<Purchase>;
+
+    fn get_user_subscription_record(ref self: TContractState, user_id: u256) -> Array<Subscription>;
 }

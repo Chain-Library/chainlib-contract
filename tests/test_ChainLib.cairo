@@ -1,7 +1,7 @@
 // Import the contract modules
 use chain_lib::base::types::{PurchaseStatus, Rank, Role, Status};
 use chain_lib::chainlib::ChainLib;
-use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType};
+use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType, PlanType};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
@@ -327,9 +327,12 @@ fn test_create_subscription() {
     // Call register
     let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
 
-    dispatcher.create_subscription(account_id, 500);
+    dispatcher.create_subscription(account_id, 500, 1);
     let subscription = dispatcher.get_user_subscription(account_id);
     assert(subscription.id == 1, 'Subscription ID should be 1');
+    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    let subscription_record = dispatcher.get_user_subscription_record(account_id);
+    assert(subscription_record.len() == 1, 'record should have length 1');
 }
 
 #[test]
@@ -347,7 +350,7 @@ fn test_create_subscription_invalid_user() {
     // Call register
     let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
 
-    dispatcher.create_subscription(20, 500);
+    dispatcher.create_subscription(20, 500, 2);
     let subscription = dispatcher.get_user_subscription(account_id);
     assert(subscription.id == 1, 'Subscription ID should be 1');
 }
@@ -451,7 +454,7 @@ fn test_has_active_subscription() {
     // Call register
     let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
 
-    dispatcher.create_subscription(account_id, 500);
+    dispatcher.create_subscription(account_id, 500, 2);
 
     start_cheat_caller_address(contract_address, admin);
     let check_sub = dispatcher.has_active_subscription(account_id);
