@@ -1491,14 +1491,14 @@ pub mod ChainLib {
         ) -> Array<Subscription> {
             let count = self.subscription_count.entry(user_id).read();
             let mut subscriptions = ArrayTrait::new();
-            
+
             let mut i = 0;
             while i < count.try_into().unwrap() {
                 let subscription = self.subscription_record.entry(user_id).at(i).read();
                 subscriptions.append(subscription);
                 i += 1;
-            };
-            
+            }
+
             subscriptions
         }
 
