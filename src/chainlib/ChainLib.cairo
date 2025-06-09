@@ -4,8 +4,8 @@ pub mod ChainLib {
     use core::option::OptionTrait;
     use core::traits::Into;
     use starknet::storage::{
-        Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
-        StoragePointerWriteAccess, Vec, VecTrait,
+        Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
+        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::{
         ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
@@ -68,7 +68,7 @@ pub mod ChainLib {
         pub category: Category,
     }
 
-    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    #[derive(Drop, Serde, starknet::Store, Clone)]
     pub struct Subscription {
         pub id: u256,
         pub subscriber: ContractAddress,
@@ -78,6 +78,15 @@ pub mod ChainLib {
         pub end_date: u64,
         pub is_active: bool,
         pub last_payment_date: u64,
+        pub subscription_type: PlanType,
+    }
+
+    #[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
+    pub enum PlanType {
+        #[default]
+        MONTHLY,
+        YEARLY,
+        TRIAL,
     }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
@@ -190,6 +199,10 @@ pub mod ChainLib {
         next_purchase_id: u256, // Counter for purchase IDs
         purchases: Map<u256, Purchase>, // Maps purchase ID to Purchase
         purchase_timeout_duration: u64,
+        subscription_record: Map<u256, Vec<Subscription>>, // subcription id to subscription record
+        subscription_count: Map<
+            u256, u256,
+        > // subscriber count to number of times the subscription record has been updated
     }
 
 
@@ -710,6 +723,7 @@ pub mod ChainLib {
             content_metadata
         }
 
+
         /// @notice Processes the initial payment for a new subscription
         /// @param amount The amount to be charged for the initial payment
         /// @param subscriber The address of the subscriber
@@ -725,6 +739,8 @@ pub mod ChainLib {
 
             // Create a new subscription
             let subscription_id = self.subscription_id.read();
+            let subscription_plan: Subscription = self.subscriptions.read(subscription_id);
+
             let current_time = get_block_timestamp();
 
             // Default subscription period is 30 days (in seconds)
@@ -739,10 +755,16 @@ pub mod ChainLib {
                 end_date: current_time + subscription_period,
                 is_active: true,
                 last_payment_date: current_time,
+                subscription_type: subscription_plan.subscription_type,
             };
 
             // Store the subscription
-            self.subscriptions.write(subscription_id, new_subscription);
+            self.subscriptions.write(subscription_id, new_subscription.clone());
+
+            self.subscription_record.entry(subscription_id).append().write(new_subscription);
+
+            let current_count = self.subscription_count.read(subscription_id);
+            self.subscription_count.write(subscription_id, current_count + 1);
 
             // Create and store the payment record
             let payment_id = self.payment_id.read();
@@ -805,7 +827,7 @@ pub mod ChainLib {
             let mut subscription = self.subscriptions.read(subscription_id);
 
             // Verify subscription exists and is active
-            assert(subscription.id == subscription_id, 'Subscription not found');
+            assert(subscription.id.clone() == subscription_id, 'Subscription not found');
             assert(subscription.is_active, 'Subscription not active');
 
             // Check if it's time for a recurring payment
@@ -819,19 +841,20 @@ pub mod ChainLib {
             // Default subscription period is 30 days (in seconds)
             let subscription_period: u64 = 30 * 24 * 60 * 60;
 
+            // Save required fields before mutating subscription
+            let subscription_amount = subscription.amount;
+            let subscription_subscriber = subscription.subscriber;
+
             // Update subscription details
             subscription.last_payment_date = current_time;
             subscription.end_date = current_time + subscription_period;
-
-            // Store updated subscription
-            self.subscriptions.write(subscription_id, subscription);
 
             // Create and store the payment record
             let payment_id = self.payment_id.read();
             let new_payment = Payment {
                 id: payment_id,
                 subscription_id: subscription_id,
-                amount: subscription.amount,
+                amount: subscription_amount,
                 timestamp: current_time,
                 is_verified: true, // Auto-verify for simplicity
                 is_refunded: false,
@@ -852,15 +875,14 @@ pub mod ChainLib {
 
             // Increment payment ID for next use
             self.payment_id.write(payment_id + 1);
-
             // Emit recurring payment processed event
             self
                 .emit(
                     RecurringPaymentProcessed {
                         payment_id: payment_id,
                         subscription_id: subscription_id,
-                        subscriber: subscription.subscriber,
-                        amount: subscription.amount,
+                        subscriber: subscription_subscriber,
+                        amount: subscription_amount,
                         timestamp: current_time,
                     },
                 );
@@ -977,7 +999,7 @@ pub mod ChainLib {
                 };
                 self.content_verification_requirements.write((content_id, i), default_req);
                 i += 1;
-            };
+            }
 
             // Store new requirements
             let new_count = requirements.len();
@@ -986,7 +1008,7 @@ pub mod ChainLib {
                 let req = requirements.at(i);
                 self.content_verification_requirements.write((content_id, i), *req);
                 i += 1;
-            };
+            }
 
             self.content_verification_requirements_count.write(content_id, new_count);
             true
@@ -1004,7 +1026,7 @@ pub mod ChainLib {
                 let req = self.content_verification_requirements.read((content_id, i));
                 requirements.append(req);
                 i += 1;
-            };
+            }
 
             requirements
         }
@@ -1031,7 +1053,7 @@ pub mod ChainLib {
                 };
                 self.content_access_rules.write((content_id, i), empty_rule);
                 i += 1;
-            };
+            }
 
             // Store new rules
             let new_count = rules.len();
@@ -1040,7 +1062,7 @@ pub mod ChainLib {
                 let rule = *rules.at(i);
                 self.content_access_rules.write((content_id, i), rule);
                 i += 1;
-            };
+            }
 
             self.content_access_rules_count.write(content_id, new_count);
             true
@@ -1058,7 +1080,7 @@ pub mod ChainLib {
                 let rule = self.content_access_rules.read((content_id, i));
                 rules.append(rule);
                 i += 1;
-            };
+            }
 
             rules
         }
@@ -1109,7 +1131,7 @@ pub mod ChainLib {
                     break;
                 }
                 i += 1;
-            };
+            }
             status
         }
 
@@ -1363,7 +1385,9 @@ pub mod ChainLib {
         }
 
 
-        fn create_subscription(ref self: ContractState, user_id: u256, amount: u256) -> bool {
+        fn create_subscription(
+            ref self: ContractState, user_id: u256, amount: u256, plan_type: u32,
+        ) -> bool {
             let caller = get_caller_address();
 
             // Verify the user exists
@@ -1380,6 +1404,21 @@ pub mod ChainLib {
             let subscription_period: u64 = 30 * 24 * 60 * 60;
             let end_date = current_time + subscription_period;
 
+            let planTypeResult: Result<PlanType, felt252> = match plan_type {
+                0 => Ok(PlanType::MONTHLY),
+                1 => Ok(PlanType::YEARLY),
+                2 => Ok(PlanType::TRIAL),
+                _ => Err('Invalid plan option'),
+            };
+            let subscription_type = match planTypeResult {
+                Result::Ok(pt) => pt,
+                Result::Err(_) => {
+                    assert(false, 'Invalid plan option');
+                    // This line will never be reached, but is required for type checking
+                    PlanType::MONTHLY
+                },
+            };
+
             let new_subscription = Subscription {
                 id: subscription_id,
                 subscriber: caller,
@@ -1389,9 +1428,16 @@ pub mod ChainLib {
                 end_date: end_date,
                 is_active: true,
                 last_payment_date: current_time,
+                subscription_type: subscription_type,
             };
 
-            self.subscriptions.write(user_id, new_subscription);
+            self.subscriptions.write(user_id, new_subscription.clone());
+
+            // read from the subscription
+            self.subscription_record.entry(user_id).append().write(new_subscription);
+
+            let current_count = self.subscription_count.read(user_id);
+            self.subscription_count.write(user_id, current_count + 1);
 
             // Emit event
             self.emit(SubscriptionCreated { user_id: user_id, end_date: end_date, amount: amount });
@@ -1439,6 +1485,24 @@ pub mod ChainLib {
 
             true
         }
+
+        fn get_user_subscription_record(
+            ref self: ContractState, user_id: u256,
+        ) -> Array<Subscription> {
+            let count = self.subscription_count.entry(user_id).read();
+            let mut subscriptions = ArrayTrait::new();
+
+            let mut i = 0;
+            while i < count.try_into().unwrap() {
+                let subscription = self.subscription_record.entry(user_id).at(i).read();
+                subscriptions.append(subscription);
+                i += 1;
+            }
+
+            subscriptions
+        }
+
+
         fn is_in_blacklist(self: @ContractState, user_id: u256, content_id: felt252) -> bool {
             self.access_blacklist.read((user_id, content_id))
         }
@@ -1707,7 +1771,7 @@ pub mod ChainLib {
                     purchases.append(purchase);
                 }
                 i += 1;
-            };
+            }
 
             // Return the array of purchases
             purchases
@@ -1732,7 +1796,7 @@ pub mod ChainLib {
                     purchases.append(purchase);
                 }
                 i += 1;
-            };
+            }
 
             // Return the array of purchases
             purchases
