@@ -1405,14 +1405,12 @@ pub mod ChainLib {
             let end_date = current_time + subscription_period;
 
             let planTypeResult: Result<PlanType, felt252> = match plan_type {
-            let plantype: Result<PlanType, felt252> = match plan_type {
                 0 => Ok(PlanType::MONTHLY),
                 1 => Ok(PlanType::YEARLY),
                 2 => Ok(PlanType::TRIAL),
                 _ => Err('Invalid plan option'),
             };
             let subscription_type = match planTypeResult {
-            let subscription_type = match plantype {
                 Result::Ok(pt) => pt,
                 Result::Err(_) => {
                     assert(false, 'Invalid plan option');

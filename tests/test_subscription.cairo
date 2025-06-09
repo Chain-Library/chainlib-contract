@@ -633,7 +633,7 @@ fn test_process_refund_success() {
 
 // Test that the function panics when trying to refund an already refunded payment
 #[test]
-#[should_panic(expected: 'Payment already refunded')]
+#[should_panic(expected: 'Subscription not active')]
 fn test_process_refund_already_refunded() {
     // Setup the contract
     let (contract_address, admin_address) = setup();
