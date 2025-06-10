@@ -58,6 +58,14 @@ pub mod ChainLib {
         Art,
     }
 
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+    pub enum SubscriptionStatus {
+        Active,
+        #[default]
+        Inactive,
+        Cancelled,
+    }
+
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
     pub struct ContentMetadata {
         pub content_id: felt252,
@@ -79,6 +87,7 @@ pub mod ChainLib {
         pub is_active: bool,
         pub last_payment_date: u64,
         pub subscription_type: PlanType,
+        pub status: SubscriptionStatus,
     }
 
     #[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
@@ -241,6 +250,8 @@ pub mod ChainLib {
         DelegationExpired: DelegationExpired,
         ContentPurchased: ContentPurchased,
         PurchaseStatusUpdated: PurchaseStatusUpdated,
+        SubscriptionCancelled: SubscriptionCancelled,
+        SubscriptionRenewed: SubscriptionRenewed,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -260,6 +271,18 @@ pub mod ChainLib {
         pub amount: u256,
     }
 
+    #[derive(Drop, starknet::Event)]
+    struct SubscriptionRenewed {
+        user: ContractAddress,
+        subscription_id: u256,
+        new_end_time: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct SubscriptionCancelled {
+        user: ContractAddress,
+        subscription_id: u256,
+    }
     #[derive(Drop, starknet::Event)]
     pub struct AccessVerified {
         pub user_id: u256,
@@ -756,6 +779,7 @@ pub mod ChainLib {
                 is_active: true,
                 last_payment_date: current_time,
                 subscription_type: subscription_plan.subscription_type,
+                status: subscription_plan.status,
             };
 
             // Store the subscription
@@ -1429,6 +1453,7 @@ pub mod ChainLib {
                 is_active: true,
                 last_payment_date: current_time,
                 subscription_type: subscription_type,
+                status: SubscriptionStatus::Active,
             };
 
             self.subscriptions.write(user_id, new_subscription.clone());
@@ -1856,6 +1881,88 @@ pub mod ChainLib {
             };
 
             self.emit(PurchaseStatusUpdated { purchase_id, new_status: status_code, timestamp });
+
+            true
+        }
+
+        fn cancel_subscription(ref self: ContractState, user_id: u256) -> bool {
+            let caller = get_caller_address();
+
+            // Verify the user exists
+            let user = self.users.read(user_id);
+            assert(user.id == user_id, 'User does not exist');
+
+            let subscription_plan: Subscription = self.subscriptions.read(user_id);
+
+            // update user_id subscription to cancelled
+            let update_subscription = Subscription {
+                id: subscription_plan.id,
+                subscriber: subscription_plan.subscriber,
+                plan_id: subscription_plan.plan_id,
+                amount: subscription_plan.amount,
+                start_date: subscription_plan.start_date,
+                end_date: subscription_plan.end_date,
+                is_active: false,
+                last_payment_date: subscription_plan.last_payment_date,
+                subscription_type: subscription_plan.subscription_type,
+                status: SubscriptionStatus::Cancelled,
+            };
+
+            // Store the subscription
+            self.subscriptions.write(user_id, update_subscription.clone());
+
+            self.subscription_record.entry(user_id).append().write(update_subscription);
+
+            let current_count = self.subscription_count.read(user_id);
+
+            self.emit(SubscriptionCancelled { user: caller, subscription_id: user_id });
+
+            true
+        }
+
+        fn renew_subscription(ref self: ContractState, user_id: u256) -> bool {
+            let caller = get_caller_address();
+
+            // Verify the user exists
+            let user = self.users.read(user_id);
+            assert(user.id == user_id, 'User does not exist');
+
+            // let subscription_id = self.subscription_id.read();
+            let subscription_plan: Subscription = self.subscriptions.read(user_id);
+
+            let current_time = get_block_timestamp();
+
+            // Default subscription period is 30 days (in seconds)
+            let subscription_period: u64 = 30 * 24 * 60 * 60;
+            let end_date = current_time + subscription_period;
+
+            // update user_id subscription to renew the previous subscription
+            let update_subscription = Subscription {
+                id: subscription_plan.id,
+                subscriber: subscription_plan.subscriber,
+                plan_id: subscription_plan.plan_id,
+                amount: subscription_plan.amount,
+                start_date: subscription_plan.start_date,
+                end_date: end_date,
+                is_active: true,
+                last_payment_date: subscription_plan.last_payment_date,
+                subscription_type: subscription_plan.subscription_type,
+                status: SubscriptionStatus::Active,
+            };
+
+            // Store the subscription
+            self.subscriptions.write(user_id, update_subscription.clone());
+
+            self.subscription_record.entry(user_id).append().write(update_subscription);
+
+            let current_count = self.subscription_count.read(user_id);
+
+            self
+                .emit(
+                    SubscriptionRenewed {
+                        user: caller, subscription_id: user_id, new_end_time: end_date,
+                    },
+                );
 
             true
         }
