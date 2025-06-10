@@ -1,7 +1,7 @@
 // Import the contract modules
 use chain_lib::base::types::{PurchaseStatus, Rank, Role, Status};
 use chain_lib::chainlib::ChainLib;
-use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType, PlanType};
+use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType, PlanType, SubscriptionStatus};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
@@ -331,6 +331,7 @@ fn test_create_subscription() {
     let subscription = dispatcher.get_user_subscription(account_id);
     assert(subscription.id == 1, 'Subscription ID should be 1');
     assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    assert(subscription.status == SubscriptionStatus::Active, 'Plan type should be YEARLY');
     let subscription_record = dispatcher.get_user_subscription_record(account_id);
     assert(subscription_record.len() == 1, 'record should have length 1');
 }
@@ -747,4 +748,74 @@ fn test_update_nonexistent_purchase() {
     // Attempt to update a purchase that doesn't exist
     let nonexistent_purchase_id = 42_u256;
     let _ = dispatcher.update_purchase_status(nonexistent_purchase_id, PurchaseStatus::Completed);
+}
+
+#[test]
+fn test_cancel_subscription() {
+    let (contract_address, _) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call register
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    dispatcher.create_subscription(account_id, 500, 1);
+    let subscription = dispatcher.get_user_subscription(account_id);
+    assert(subscription.id == 1, 'Subscription ID should be 1');
+    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    assert(subscription.status == SubscriptionStatus::Active, 'Plan type should be YEARLY');
+    let subscription_record = dispatcher.get_user_subscription_record(account_id);
+    assert(subscription_record.len() == 1, 'record should have length 1');
+
+    dispatcher.cancel_subscription(account_id);
+    let subscription = dispatcher.get_user_subscription(account_id);
+    assert(subscription.id == 1, 'Subscription ID should be 1');
+    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    assert(subscription.status == SubscriptionStatus::Cancelled, 'Plan status should be cancelled');
+    let subscription_record = dispatcher.get_user_subscription_record(account_id);
+    assert(subscription_record.len() == 1, 'record should have length 1');
+}
+
+#[test]
+fn test_renew_subscription() {
+    let (contract_address, _) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call register
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    dispatcher.create_subscription(account_id, 500, 1);
+    let subscription = dispatcher.get_user_subscription(account_id);
+    assert(subscription.id == 1, 'Subscription ID should be 1');
+    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    assert(subscription.status == SubscriptionStatus::Active, 'Plan type should be YEARLY');
+    let subscription_record = dispatcher.get_user_subscription_record(account_id);
+    assert(subscription_record.len() == 1, 'record should have length 1');
+
+    dispatcher.cancel_subscription(account_id);
+    let subscription = dispatcher.get_user_subscription(account_id);
+    assert(subscription.id == 1, 'Subscription ID should be 1');
+    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    assert(subscription.status == SubscriptionStatus::Cancelled, 'Plan status should be cancelled');
+    let subscription_record = dispatcher.get_user_subscription_record(account_id);
+    assert(subscription_record.len() == 1, 'record should have length 1');
+
+    dispatcher.renew_subscription(account_id);
+    let subscription = dispatcher.get_user_subscription(account_id);
+    assert(subscription.id == 1, 'Subscription ID should be 1');
+    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    assert(subscription.status == SubscriptionStatus::Active, 'Plan status should be Active');
+    let subscription_record = dispatcher.get_user_subscription_record(account_id);
+    assert(subscription_record.len() == 1, 'record should have length 1');
 }

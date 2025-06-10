@@ -211,4 +211,6 @@ pub trait IChainLib<TContractState> {
     fn get_content_purchases(ref self: TContractState, content_id: felt252) -> Array<Purchase>;
 
     fn get_user_subscription_record(ref self: TContractState, user_id: u256) -> Array<Subscription>;
+    fn cancel_subscription(ref self: TContractState, user_id: u256) -> bool;
+    fn renew_subscription(ref self: TContractState, user_id: u256) -> bool;
 }
