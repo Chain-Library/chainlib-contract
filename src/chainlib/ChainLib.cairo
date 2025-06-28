@@ -1990,12 +1990,18 @@ pub mod ChainLib {
             strk_token.transfer_from(caller, contract_address, amount);
         }
 
+        /// @notice Checks if the caller has sufficient token allowance.
+        /// @dev Asserts that the caller has enough allowance to transfer the specified amount.
+        /// @param self The contract state reference.
+        /// @param spender The address of the spender (usually the contract itself).
+        /// @param amount The amount of tokens to check allowance for.
+        /// @require The caller must have sufficient token allowance.
         fn check_token_allowance(
             ref self: ContractState, spender: ContractAddress, amount: u256,
         ) {
-            // let token = IERC20Dispatcher { contract_address: self.token_address.read() };
-            // let allowance = token.allowance(spender, starknet::get_contract_address());
-            // assert(allowance >= amount, 'Insufficient token allowance');
+            let token = IERC20Dispatcher { contract_address: self.token_address.read() };
+            let allowance = token.allowance(spender, starknet::get_contract_address());
+            assert(allowance >= amount, 'Insufficient token allowance');
         }
 
         fn check_token_balance(
