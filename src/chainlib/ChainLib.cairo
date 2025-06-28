@@ -992,7 +992,7 @@ pub mod ChainLib {
             assert(!payment.is_refunded, 'Payment already refunded');
 
             // process the refund
-            self._process_refund(payment.amount, payment.refund_address);
+            self._process_refund(payment.amount, get_caller_address());
 
             // Mark payment as refunded
             payment.is_refunded = true;
