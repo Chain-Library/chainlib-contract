@@ -3,20 +3,21 @@ pub mod ChainLib {
     use core::array::{Array, ArrayTrait};
     use core::option::OptionTrait;
     use core::traits::Into;
+    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use starknet::storage::{
         Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::{
-        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address, get_contract_address
+        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
+        get_contract_address,
     };
+    use crate::base::errors::payment_errors;
     use crate::base::types::{
         AccessRule, AccessType, Permissions, Purchase, PurchaseStatus, Rank, Role, Status,
         TokenBoundAccount, User, VerificationRequirement, VerificationType, permission_flags,
     };
     use crate::interfaces::IChainLib::IChainLib;
-    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use crate::base::errors::payment_errors;
 
     // Define delegation-specific structures and constants
 
@@ -214,12 +215,14 @@ pub mod ChainLib {
         subscription_count: Map<
             u256, u256,
         >, // subscriber count to number of times the subscription record has been updated
-        token_address: ContractAddress, // Address of the token contract used for payments
+        token_address: ContractAddress // Address of the token contract used for payments
     }
 
 
     #[constructor]
-    fn constructor(ref self: ContractState, admin: ContractAddress, token_address: ContractAddress) {
+    fn constructor(
+        ref self: ContractState, admin: ContractAddress, token_address: ContractAddress,
+    ) {
         // Store the values in contract state
         self.admin.write(admin);
         self.token_address.write(token_address);
@@ -868,6 +871,9 @@ pub mod ChainLib {
             // For simplicity, we'll allow any recurring payment after the initial payment
             assert(current_time > subscription.last_payment_date, 'Payment not due yet');
 
+            // Process the payment
+            self._process_payment(subscription.amount);
+
             // Default subscription period is 30 days (in seconds)
             let subscription_period: u64 = 30 * 24 * 60 * 60;
 
@@ -984,6 +990,9 @@ pub mod ChainLib {
 
             // Verify payment exists and is not already refunded
             assert(!payment.is_refunded, 'Payment already refunded');
+
+            // process the refund
+            self._process_refund(payment.amount, payment.refund_address);
 
             // Mark payment as refunded
             payment.is_refunded = true;
@@ -1745,6 +1754,9 @@ pub mod ChainLib {
             let price = self.content_prices.read(content_id);
             assert!(price > 0, "Content either doesn't exist or has no price");
 
+            // process the purchase
+            self._process_payment(price);
+
             let buyer = get_caller_address();
             let current_time = get_block_timestamp();
 
@@ -1981,7 +1993,7 @@ pub mod ChainLib {
         /// @param self The contract state reference.
         /// @param amount The amount of tokens to transfer.
         /// @require The caller must have sufficient token allowance and balance.
-        fn _process_payment(ref self: ContractState, amount: u256){
+        fn _process_payment(ref self: ContractState, amount: u256) {
             let strk_token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let caller = get_caller_address();
             let contract_address = get_contract_address();
@@ -1996,9 +2008,7 @@ pub mod ChainLib {
         /// @param spender The address of the spender (usually the contract itself).
         /// @param amount The amount of tokens to check allowance for.
         /// @require The caller must have sufficient token allowance.
-        fn _check_token_allowance(
-            ref self: ContractState, spender: ContractAddress, amount: u256,
-        ) {
+        fn _check_token_allowance(ref self: ContractState, spender: ContractAddress, amount: u256) {
             let token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let allowance = token.allowance(spender, starknet::get_contract_address());
             assert(allowance >= amount, payment_errors::INSUFFICIENT_ALLOWANCE);
@@ -2010,13 +2020,17 @@ pub mod ChainLib {
         /// @param caller The address of the caller (usually the user).
         /// @param amount The amount of tokens to check balance for.
         /// @require The caller must have sufficient token balance.
-        fn _check_token_balance(
-            ref self: ContractState, caller: ContractAddress, amount: u256,
-        ) {
+        fn _check_token_balance(ref self: ContractState, caller: ContractAddress, amount: u256) {
             let token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let balance = token.balance_of(caller);
             assert(balance >= amount, payment_errors::INSUFFICIENT_BALANCE);
         }
 
+        fn _process_refund(ref self: ContractState, amount: u256, refund_address: ContractAddress) {
+            let token = IERC20Dispatcher { contract_address: self.token_address.read() };
+            let contract_address = get_contract_address();
+            self._check_token_balance(contract_address, amount);
+            token.transfer(refund_address, amount);
+        }
     }
 }
