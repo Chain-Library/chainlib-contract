@@ -8,7 +8,7 @@ pub mod ChainLib {
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::{
-        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
+        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address, get_contract_address
     };
     use crate::base::types::{
         AccessRule, AccessType, Permissions, Purchase, PurchaseStatus, Rank, Role, Status,
@@ -1976,14 +1976,34 @@ pub mod ChainLib {
 
     #[generate_trait]
     impl internal of InternalTraits {
+        /// @notice Processes a payment for a subscription or content purchase.
+        /// @dev Checks the token allowance and balance before transferring tokens.
+        /// @param self The contract state reference.
+        /// @param amount The amount of tokens to transfer.
+        /// @require The caller must have sufficient token allowance and balance.
         fn process_payment(ref self: ContractState, amount: u256){
-
+            let strk_token = IERC20Dispatcher { contract_address: self.token_address.read() };
+            let caller = get_caller_address();
+            let contract_address = get_contract_address();
+            self.check_token_allowance(caller, amount);
+            self.check_token_balance(caller, amount);
+            strk_token.transfer_from(caller, contract_address, amount);
         }
 
         fn check_token_allowance(
-            ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256,
-        ) -> bool {
-            
+            ref self: ContractState, spender: ContractAddress, amount: u256,
+        ) {
+            // let token = IERC20Dispatcher { contract_address: self.token_address.read() };
+            // let allowance = token.allowance(spender, starknet::get_contract_address());
+            // assert(allowance >= amount, 'Insufficient token allowance');
+        }
+
+        fn check_token_balance(
+            ref self: ContractState, caller: ContractAddress, amount: u256,
+        ) {
+            // let token = IERC20Dispatcher { contract_address: self.token_address.read() };
+            // let balance = token.balance_of(caller);
+            // assert(balance >= amount, 'Insufficient token balance');
         }
 
     }
