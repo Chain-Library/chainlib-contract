@@ -147,3 +147,24 @@ pub struct Purchase {
     pub transaction_hash: felt252,
     pub timeout_expiry: u64,
 }
+
+
+#[derive(Drop, Serde, starknet::Store, Debug)]
+pub enum ReceiptStatus {
+    #[default]
+    Invalid,
+    Valid,
+}
+
+#[derive(Drop, Serde, starknet::Store, Debug)]
+pub struct Receipt {
+    pub id: u256,
+    pub purchase_id: u256,
+    pub content_id: felt252,
+    pub buyer: ContractAddress,
+    pub creator: ContractAddress,
+    pub price: u256,
+    pub status: ReceiptStatus,
+    pub issued_at: u64,
+    pub transaction_hash: felt252,
+}

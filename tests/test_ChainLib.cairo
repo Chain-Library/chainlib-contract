@@ -652,6 +652,10 @@ fn test_verify_purchase() {
     // Now the purchase should be verified
     let is_now_verified = dispatcher.verify_purchase(purchase_id);
     assert(is_now_verified, 'Purchase should be verified');
+
+    let receipt = dispatcher.get_receipt(1);
+
+    assert(receipt.purchase_id == purchase_id, 'receipt error');
 }
 
 #[test]
