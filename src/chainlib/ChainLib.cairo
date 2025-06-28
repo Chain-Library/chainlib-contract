@@ -2004,12 +2004,18 @@ pub mod ChainLib {
             assert(allowance >= amount, 'Insufficient token allowance');
         }
 
+        /// @notice Checks if the caller has sufficient token balance.
+        /// @dev Asserts that the caller has enough balance to transfer the specified amount.
+        /// @param self The contract state reference.
+        /// @param caller The address of the caller (usually the user).
+        /// @param amount The amount of tokens to check balance for.
+        /// @require The caller must have sufficient token balance.
         fn check_token_balance(
             ref self: ContractState, caller: ContractAddress, amount: u256,
         ) {
-            // let token = IERC20Dispatcher { contract_address: self.token_address.read() };
-            // let balance = token.balance_of(caller);
-            // assert(balance >= amount, 'Insufficient token balance');
+            let token = IERC20Dispatcher { contract_address: self.token_address.read() };
+            let balance = token.balance_of(caller);
+            assert(balance >= amount, 'Insufficient token balance');
         }
 
     }
