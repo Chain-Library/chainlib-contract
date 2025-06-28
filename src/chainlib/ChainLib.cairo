@@ -764,6 +764,8 @@ pub mod ChainLib {
             // Only allow the subscriber themselves to create a subscription
             assert(caller == subscriber, 'Only subscriber can call');
 
+            self.process_payment(amount);
+
             // Create a new subscription
             let subscription_id = self.subscription_id.read();
             let subscription_plan: Subscription = self.subscriptions.read(subscription_id);
@@ -1970,5 +1972,19 @@ pub mod ChainLib {
 
             true
         }
+    }
+
+    #[generate_trait]
+    impl internal of InternalTraits {
+        fn process_payment(ref self: ContractState, amount: u256){
+
+        }
+
+        fn check_token_allowance(
+            ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256,
+        ) -> bool {
+            
+        }
+
     }
 }
