@@ -16,7 +16,7 @@ pub mod ChainLib {
     };
     use crate::interfaces::IChainLib::IChainLib;
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-
+    use crate::base::errors::payment_errors;
 
     // Define delegation-specific structures and constants
 
@@ -2001,7 +2001,7 @@ pub mod ChainLib {
         ) {
             let token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let allowance = token.allowance(spender, starknet::get_contract_address());
-            assert(allowance >= amount, 'Insufficient token allowance');
+            assert(allowance >= amount, payment_errors::INSUFFICIENT_ALLOWANCE);
         }
 
         /// @notice Checks if the caller has sufficient token balance.
@@ -2015,7 +2015,7 @@ pub mod ChainLib {
         ) {
             let token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let balance = token.balance_of(caller);
-            assert(balance >= amount, 'Insufficient token balance');
+            assert(balance >= amount, payment_errors::INSUFFICIENT_BALANCE);
         }
 
     }
