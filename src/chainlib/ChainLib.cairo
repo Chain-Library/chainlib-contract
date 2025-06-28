@@ -764,7 +764,7 @@ pub mod ChainLib {
             // Only allow the subscriber themselves to create a subscription
             assert(caller == subscriber, 'Only subscriber can call');
 
-            self.process_payment(amount);
+            self._process_payment(amount);
 
             // Create a new subscription
             let subscription_id = self.subscription_id.read();
@@ -1981,12 +1981,12 @@ pub mod ChainLib {
         /// @param self The contract state reference.
         /// @param amount The amount of tokens to transfer.
         /// @require The caller must have sufficient token allowance and balance.
-        fn process_payment(ref self: ContractState, amount: u256){
+        fn _process_payment(ref self: ContractState, amount: u256){
             let strk_token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let caller = get_caller_address();
             let contract_address = get_contract_address();
-            self.check_token_allowance(caller, amount);
-            self.check_token_balance(caller, amount);
+            self._check_token_allowance(caller, amount);
+            self._check_token_balance(caller, amount);
             strk_token.transfer_from(caller, contract_address, amount);
         }
 
@@ -1996,7 +1996,7 @@ pub mod ChainLib {
         /// @param spender The address of the spender (usually the contract itself).
         /// @param amount The amount of tokens to check allowance for.
         /// @require The caller must have sufficient token allowance.
-        fn check_token_allowance(
+        fn _check_token_allowance(
             ref self: ContractState, spender: ContractAddress, amount: u256,
         ) {
             let token = IERC20Dispatcher { contract_address: self.token_address.read() };
@@ -2010,7 +2010,7 @@ pub mod ChainLib {
         /// @param caller The address of the caller (usually the user).
         /// @param amount The amount of tokens to check balance for.
         /// @require The caller must have sufficient token balance.
-        fn check_token_balance(
+        fn _check_token_balance(
             ref self: ContractState, caller: ContractAddress, amount: u256,
         ) {
             let token = IERC20Dispatcher { contract_address: self.token_address.read() };
