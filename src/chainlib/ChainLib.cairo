@@ -15,6 +15,8 @@ pub mod ChainLib {
         TokenBoundAccount, User, VerificationRequirement, VerificationType, permission_flags,
     };
     use crate::interfaces::IChainLib::IChainLib;
+    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+
 
     // Define delegation-specific structures and constants
 
@@ -211,14 +213,16 @@ pub mod ChainLib {
         subscription_record: Map<u256, Vec<Subscription>>, // subcription id to subscription record
         subscription_count: Map<
             u256, u256,
-        > // subscriber count to number of times the subscription record has been updated
+        >, // subscriber count to number of times the subscription record has been updated
+        token_address: ContractAddress, // Address of the token contract used for payments
     }
 
 
     #[constructor]
-    fn constructor(ref self: ContractState, admin: ContractAddress) {
+    fn constructor(ref self: ContractState, admin: ContractAddress, token_address: ContractAddress) {
         // Store the values in contract state
         self.admin.write(admin);
+        self.token_address.write(token_address);
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
         self.purchase_timeout_duration.write(3600);
