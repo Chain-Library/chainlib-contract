@@ -3,9 +3,11 @@ use chain_lib::chainlib::ChainLib::ChainLib::{
     Event, PaymentProcessed, PaymentVerified, RecurringPaymentProcessed, RefundProcessed,
 };
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
+use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpyAssertionsTrait,
-    cheat_caller_address, declare, spy_events,
+    cheat_caller_address, declare, spy_events, start_cheat_caller_address,
+    stop_cheat_caller_address,
 };
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
@@ -62,6 +64,86 @@ fn test_initial_payment() {
     // Verify the payment was processed successfully
     assert(result == true, 'Initial payment failed');
 }
+
+
+#[test]
+#[should_panic(expected: 'Insufficient token allowance')]
+fn test_initial_payment_should_panic_if_no_allowance() {
+    // Setup the contract
+    let (contract_address, admin_address, erc20_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    let token_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    // Transfer tokens from admin to user
+    start_cheat_caller_address(erc20_address, admin_address);
+    token_dispatcher.transfer(subscriber_address, 100000000000000000);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set the caller to the subscriber for the entire test
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+
+    // Verify the payment was processed successfully
+    assert(result == true, 'Initial payment failed');
+}
+
+
+#[test]
+#[should_panic(expected: 'Insufficient token balance')]
+fn test_initial_payment_should_panic_if_insufficient_balance() {
+    // Setup the contract
+    let (contract_address, admin_address, erc20_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    let token_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    // Transfer tokens from admin to user
+    start_cheat_caller_address(erc20_address, admin_address);
+    token_dispatcher.transfer(subscriber_address, 1000000000);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set user as caller to approve the contract
+    start_cheat_caller_address(erc20_address, subscriber_address);
+    token_dispatcher.approve(subscription_dispatcher.contract_address, 100000000000000000);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set the caller to the subscriber for the entire test
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+
+    // Verify the payment was processed successfully
+    assert(result == true, 'Initial payment failed');
+}
+
 
 // Test that the initial payment fails if the caller is not the subscriber
 #[test]
@@ -238,6 +320,77 @@ fn test_process_recurring_payment() {
     assert(recurring_result == true, 'Recurring payment failed');
 }
 
+#[test]
+#[should_panic(expected: 'Insufficient token allowance')]
+fn test_process_recurring_payment_should_panic_if_insufficient_allowance() {
+    // Setup the contract
+    let (contract_address, admin_address, erc20_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    let token_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    // Transfer tokens from admin to user
+    start_cheat_caller_address(erc20_address, admin_address);
+    token_dispatcher.transfer(subscriber_address, 1000000000);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set the caller to the subscriber for the entire test
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+}
+
+
+#[test]
+#[should_panic(expected: 'Insufficient token balance')]
+fn test_process_recurring_payment_should_panic_if_insufficient_balance() {
+    // Setup the contract
+    let (contract_address, admin_address, erc20_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    let token_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    // Transfer tokens from admin to user
+    start_cheat_caller_address(erc20_address, admin_address);
+    token_dispatcher.transfer(subscriber_address, 1000000000);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set user as caller to approve the contract
+    start_cheat_caller_address(erc20_address, subscriber_address);
+    token_dispatcher.approve(subscription_dispatcher.contract_address, 100000000000000000);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set the caller to the subscriber for the entire test
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+}
 
 // test should panic if payment not due yet
 #[test]

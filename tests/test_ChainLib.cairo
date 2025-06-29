@@ -528,6 +528,93 @@ fn test_purchase_content() {
     assert(purchase.transaction_hash == transaction_hash, 'Transaction hash mismatch');
 }
 
+
+#[test]
+#[should_panic(expected: 'Insufficient token balance')]
+fn test_purchase_content_should_fail_if_insufficient_balance() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+    let user_address = contract_address_const::<'user'>();
+
+    let token_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    // Transfer tokens from admin to user
+    start_cheat_caller_address(erc20_address, admin_address);
+    token_dispatcher.transfer(user_address, 10);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set user as caller to approve the contract
+    start_cheat_caller_address(erc20_address, user_address);
+    token_dispatcher.approve(dispatcher.contract_address, 10000);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set up test data
+    let content_id: felt252 = 'content1';
+    let price: u256 = 1000_u256;
+    let transaction_hash: felt252 = 'tx1';
+
+    // Set up content with price
+    setup_content_with_price(dispatcher, admin_address, contract_address, content_id, price);
+
+    // We set user as the caller for the purchase
+    cheat_caller_address(contract_address, user_address, CheatSpan::Indefinite);
+
+    // Call the purchase function
+    let purchase_id = dispatcher.purchase_content(content_id, transaction_hash);
+
+    // Verify the purchase details
+    let purchase = dispatcher.get_purchase_details(purchase_id);
+    assert(purchase.id == purchase_id, 'ID mismatch');
+    assert(purchase.content_id == content_id, 'Content ID mismatch');
+    assert(purchase.buyer == user_address, 'Buyer mismatch');
+    assert(purchase.price == price, 'Price mismatch');
+    assert(purchase.status == PurchaseStatus::Pending, 'Status mismatch');
+    assert(purchase.transaction_hash == transaction_hash, 'Transaction hash mismatch');
+}
+
+
+#[test]
+#[should_panic(expected: 'Insufficient token allowance')]
+fn test_purchase_content_should_fail_if_insufficient_allowance() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+    let user_address = contract_address_const::<'user'>();
+
+    let token_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    // Transfer tokens from admin to user
+    start_cheat_caller_address(erc20_address, admin_address);
+    token_dispatcher.transfer(user_address, 10000);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set user as caller to approve the contract
+    start_cheat_caller_address(erc20_address, user_address);
+    token_dispatcher.approve(dispatcher.contract_address, 100);
+    stop_cheat_caller_address(erc20_address);
+
+    // Set up test data
+    let content_id: felt252 = 'content1';
+    let price: u256 = 1000_u256;
+    let transaction_hash: felt252 = 'tx1';
+
+    // Set up content with price
+    setup_content_with_price(dispatcher, admin_address, contract_address, content_id, price);
+
+    // We set user as the caller for the purchase
+    cheat_caller_address(contract_address, user_address, CheatSpan::Indefinite);
+
+    // Call the purchase function
+    let purchase_id = dispatcher.purchase_content(content_id, transaction_hash);
+
+    // Verify the purchase details
+    let purchase = dispatcher.get_purchase_details(purchase_id);
+    assert(purchase.id == purchase_id, 'ID mismatch');
+    assert(purchase.content_id == content_id, 'Content ID mismatch');
+    assert(purchase.buyer == user_address, 'Buyer mismatch');
+    assert(purchase.price == price, 'Price mismatch');
+    assert(purchase.status == PurchaseStatus::Pending, 'Status mismatch');
+    assert(purchase.transaction_hash == transaction_hash, 'Transaction hash mismatch');
+}
+
+
 #[test]
 #[should_panic(expected: "Content either doesn't exist")]
 fn test_purchase_nonexistent_content() {
