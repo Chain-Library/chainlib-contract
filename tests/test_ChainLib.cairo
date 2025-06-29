@@ -4,7 +4,6 @@ use chain_lib::chainlib::ChainLib;
 use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType, PlanType, SubscriptionStatus};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
     start_cheat_caller_address, stop_cheat_caller_address,
@@ -30,6 +29,33 @@ fn setup_content_with_price(
     dispatcher.set_content_price(content_id, price);
 }
 
+// Token faucet and allowance setup
+fn token_faucet_and_allowance(
+    dispatcher: IChainLibDispatcher,
+    user_address: ContractAddress,
+    erc20_address: ContractAddress,
+    token_amount: u256,
+) {
+    let admin_address = contract_address_const::<'admin'>();
+
+    let token_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    // Transfer tokens from admin to user
+    start_cheat_caller_address(erc20_address, admin_address);
+    token_dispatcher.transfer(user_address, token_amount);
+    stop_cheat_caller_address(erc20_address);
+
+    let user_token_balance = token_dispatcher.balance_of(user_address);
+    assert(user_token_balance >= token_amount, 'User tokens not gotten');
+
+    // Set user as caller to approve the contract
+    start_cheat_caller_address(erc20_address, user_address);
+    token_dispatcher.approve(dispatcher.contract_address, token_amount);
+    stop_cheat_caller_address(erc20_address);
+
+    let allowance = token_dispatcher.allowance(user_address, dispatcher.contract_address);
+    assert(allowance >= token_amount, 'Allowance not set correctly');
+}
+
 fn setup() -> (ContractAddress, ContractAddress, ContractAddress) {
     let admin_address: ContractAddress = contract_address_const::<'admin'>();
 
@@ -40,7 +66,7 @@ fn setup() -> (ContractAddress, ContractAddress, ContractAddress) {
 
     // Deploy the ChainLib contract
     let declare_result = declare("ChainLib");
-        assert(declare_result.is_ok(), 'Contract declaration failed');
+    assert(declare_result.is_ok(), 'Contract declaration failed');
 
     let contract_class = declare_result.unwrap().contract_class();
     let mut calldata = array![admin_address.into(), erc20_address.into()];
@@ -540,6 +566,9 @@ fn test_purchase_content() {
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
 
+    // Token faucet and allowance setup
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
+
     // Set up test data
     let content_id: felt252 = 'content1';
     let price: u256 = 1000_u256;
@@ -592,28 +621,11 @@ fn test_get_user_purchases() {
     let content_id_1: felt252 = 'content1';
     let content_id_2: felt252 = 'content2';
     let price: u256 = 1000_u256;
-
-    let token_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
-
-    // transfer from origin to user
-    start_cheat_caller_address(contract_address, admin_address);
-    token_dispatcher.transfer(user_address, 1000);
-    stop_cheat_caller_address(contract_address);
-
-    let user_token_balance = token_dispatcher.balance_of(user_address);
-    assert(user_token_balance >= 1000, 'User tokens not gotten');
-
-    // Simulate delegate's approval:
-    start_cheat_caller_address(contract_address, user_address);
-    token_dispatcher.approve(contract_address, 1000);
-    stop_cheat_caller_address(contract_address);
-
-    let allowance = token_dispatcher.allowance(user_address, contract_address);
-    assert(allowance >= 1000, 'Allowance not set correctly');
+    
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
     
     // Set admin as caller to prepare the contract state
     cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
-
     // Set up content with price
     setup_content_with_price(dispatcher, admin_address, contract_address, content_id_1, price);
     setup_content_with_price(dispatcher, admin_address, contract_address, content_id_2, price * 2);
@@ -649,6 +661,7 @@ fn test_verify_purchase() {
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
 
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
     // Set up test data
     let content_id: felt252 = 'content1';
     let price: u256 = 1000_u256;
@@ -686,6 +699,8 @@ fn test_update_purchase_status() {
     let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
+
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
 
     // Set up test data
     let content_id: felt252 = 'content1';
@@ -742,6 +757,7 @@ fn test_update_purchase_status_not_admin() {
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
 
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
     // Set up test data
     let content_id: felt252 = 'content1';
     let price: u256 = 1000_u256;
