@@ -9,7 +9,6 @@ mod permission_tests {
     use chain_lib::interfaces::IChainLib::{
         IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait,
     };
-    use chain_lib::utils::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
     use core::array::ArrayTrait;
     use core::option::OptionTrait;
     use snforge_std::{
@@ -18,6 +17,7 @@ mod permission_tests {
     use starknet::class_hash::ClassHash;
     use starknet::contract_address::contract_address_const;
     use starknet::{ContractAddress, get_caller_address};
+    use crate::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 
 
     #[test]

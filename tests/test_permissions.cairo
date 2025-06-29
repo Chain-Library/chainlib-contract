@@ -5,13 +5,13 @@ mod permission_tests {
     use chain_lib::interfaces::IChainLib::{
         IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait,
     };
-    use chain_lib::utils::test_utils::setup;
     use snforge_std::{
         CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
     };
     use starknet::class_hash::ClassHash;
     use starknet::contract_address::contract_address_const;
     use starknet::{ContractAddress, get_caller_address};
+    use crate::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 
     #[test]
     fn test_token_account_owner_permissions() {

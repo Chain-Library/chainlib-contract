@@ -3,7 +3,6 @@ use chain_lib::chainlib::ChainLib::ChainLib::{
     Event, PaymentProcessed, PaymentVerified, RecurringPaymentProcessed, RefundProcessed,
 };
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
-use chain_lib::utils::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpyAssertionsTrait,
     cheat_caller_address, declare, spy_events,
@@ -12,6 +11,7 @@ use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
 use starknet::{ContractAddress, get_block_timestamp};
+use crate::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 // Helper function to create a token-bound account for testing
 fn create_test_account(dispatcher: IChainLibDispatcher) -> (u256, ContractAddress) {
     // Test input values for token-bound account
@@ -148,7 +148,9 @@ fn test_initial_payment_event() {
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
-
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
     // Set the caller to the subscriber for the entire test
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
 
@@ -549,6 +551,10 @@ fn test_process_refund_admin_only() {
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
+
     // Set the caller to the subscriber for creating a subscription
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
 
@@ -567,10 +573,7 @@ fn test_process_refund_admin_only() {
 
     // Since this is the first subscription, its ID is 0
     let subscription_id: u256 = 0;
-    
-    token_faucet_and_allowance(
-        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
-    );
+
     // Try to process a refund as a non-admin (should panic)
     // We're still using the subscriber address as the caller
     subscription_dispatcher.process_refund(subscription_id);

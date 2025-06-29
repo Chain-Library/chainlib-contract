@@ -10,7 +10,6 @@ use chain_lib::chainlib::ChainLib::ChainLib::{
     delegation_flags,
 };
 use chain_lib::interfaces::IChainLib::{IChainLibDispatcher, IChainLibDispatcherTrait};
-use chain_lib::utils::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 // use chain_lib::interfaces::IChainLib::{
 //     IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait
 // };
@@ -27,6 +26,7 @@ use snforge_std::{
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+use crate::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 
 
 #[test]

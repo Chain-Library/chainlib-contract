@@ -13,6 +13,3 @@ pub mod presets {
     pub mod mock_erc20;
 }
 
-pub mod utils {
-    pub mod test_utils;
-}

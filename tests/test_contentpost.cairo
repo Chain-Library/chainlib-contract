@@ -2,7 +2,6 @@ use chain_lib::base::types::{Rank, Role};
 use chain_lib::chainlib::ChainLib;
 use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentMetadata, ContentType};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
-use chain_lib::utils::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpy, EventSpyAssertionsTrait,
     cheat_caller_address, declare, spy_events,
@@ -11,6 +10,7 @@ use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
+use crate::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 
 
 #[test]
