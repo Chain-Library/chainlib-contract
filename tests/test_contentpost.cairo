@@ -2,6 +2,7 @@ use chain_lib::base::types::{Rank, Role};
 use chain_lib::chainlib::ChainLib;
 use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentMetadata, ContentType};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
+use chain_lib::utils::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpy, EventSpyAssertionsTrait,
     cheat_caller_address, declare, spy_events,
@@ -12,26 +13,10 @@ use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
 
 
-fn setup() -> (ContractAddress, ContractAddress) {
-    let declare_result = declare("ChainLib");
-    assert(declare_result.is_ok(), 'Contract declaration failed');
-    let admin_address: ContractAddress = contract_address_const::<'admin'>();
-
-    let contract_class = declare_result.unwrap().contract_class();
-    let mut calldata = array![admin_address.into()];
-
-    let deploy_result = contract_class.deploy(@calldata);
-    assert(deploy_result.is_ok(), 'Contract deployment failed');
-
-    let (contract_address, _) = deploy_result.unwrap();
-
-    (contract_address, admin_address)
-}
-
-
 #[test]
 fn test_register_content() {
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
+
     let dispatcher = IChainLibDispatcher { contract_address };
 
     let mut spy = spy_events();
@@ -91,7 +76,8 @@ fn test_register_content() {
 
 #[test]
 fn test_register_content_with_different_types() {
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
+
     let dispatcher = IChainLibDispatcher { contract_address };
 
     let mut spy = spy_events();
@@ -159,7 +145,8 @@ fn test_register_content_with_different_types() {
 #[test]
 #[should_panic]
 fn test_register_content_not_writer() {
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
+
     let dispatcher = IChainLibDispatcher { contract_address };
 
     let title: felt252 = 'Unauthorized Content';
@@ -188,7 +175,8 @@ fn test_register_content_not_writer() {
 #[test]
 #[should_panic]
 fn test_register_content_empty_title() {
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
+
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Set up content with empty title
@@ -218,7 +206,8 @@ fn test_register_content_empty_title() {
 #[test]
 #[should_panic]
 fn test_register_content_empty_description() {
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
+
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Set up content with empty description
@@ -247,7 +236,8 @@ fn test_register_content_empty_description() {
 
 #[test]
 fn test_register_content_multiple_users() {
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
+
     let dispatcher = IChainLibDispatcher { contract_address };
 
     let mut spy = spy_events();
@@ -337,7 +327,8 @@ fn test_register_content_multiple_users() {
 
 #[test]
 fn test_content_metadata_retrieval() {
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
+
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a user with WRITER role
@@ -418,7 +409,8 @@ fn test_content_metadata_retrieval() {
 
 #[test]
 fn test_register_multiple_content_items() {
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
+
     let dispatcher = IChainLibDispatcher { contract_address };
 
     let mut spy = spy_events();
@@ -526,7 +518,8 @@ fn test_register_multiple_content_items() {
 #[test]
 #[should_panic]
 fn test_get_non_existent_content() {
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
+
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Create a user with WRITER role

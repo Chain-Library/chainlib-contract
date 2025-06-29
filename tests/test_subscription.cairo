@@ -3,6 +3,7 @@ use chain_lib::chainlib::ChainLib::ChainLib::{
     Event, PaymentProcessed, PaymentVerified, RecurringPaymentProcessed, RefundProcessed,
 };
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
+use chain_lib::utils::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpyAssertionsTrait,
     cheat_caller_address, declare, spy_events,
@@ -11,24 +12,6 @@ use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
 use starknet::{ContractAddress, get_block_timestamp};
-
-
-fn setup() -> (ContractAddress, ContractAddress) {
-    let declare_result = declare("ChainLib");
-    assert(declare_result.is_ok(), 'Contract declaration failed');
-    let admin_address: ContractAddress = contract_address_const::<'admin'>();
-
-    let contract_class = declare_result.unwrap().contract_class();
-    let mut calldata = array![admin_address.into()];
-
-    let deploy_result = contract_class.deploy(@calldata);
-    assert(deploy_result.is_ok(), 'Contract deployment failed');
-
-    let (contract_address, _) = deploy_result.unwrap();
-
-    (contract_address, admin_address)
-}
-
 // Helper function to create a token-bound account for testing
 fn create_test_account(dispatcher: IChainLibDispatcher) -> (u256, ContractAddress) {
     // Test input values for token-bound account
@@ -50,7 +33,7 @@ fn create_test_account(dispatcher: IChainLibDispatcher) -> (u256, ContractAddres
 #[test]
 fn test_initial_payment() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -58,6 +41,10 @@ fn test_initial_payment() {
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
 
     // Set the caller to the subscriber for the entire test
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
@@ -81,7 +68,7 @@ fn test_initial_payment() {
 #[should_panic(expected: 'Only subscriber can call')]
 fn test_initial_payment_invalid_subscriber() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create subscription dispatcher
     let subscription_dispatcher = IChainLibDispatcher { contract_address };
@@ -99,7 +86,7 @@ fn test_initial_payment_invalid_subscriber() {
 #[should_panic(expected: 'Only subscriber can call')]
 fn test_initial_payment_unauthorized() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -121,7 +108,7 @@ fn test_initial_payment_unauthorized() {
 #[test]
 fn test_token_bound_account_creation() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatcher
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -151,7 +138,7 @@ fn test_token_bound_account_creation() {
 #[test]
 fn test_initial_payment_event() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -203,7 +190,7 @@ fn test_initial_payment_event() {
 #[test]
 fn test_process_recurring_payment() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -211,6 +198,10 @@ fn test_process_recurring_payment() {
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
 
     // Set the caller to the subscriber for the entire test
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
@@ -251,7 +242,7 @@ fn test_process_recurring_payment() {
 #[should_panic(expected: 'Payment not due yet')]
 fn test_process_recurring_payment_not_due() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -259,6 +250,10 @@ fn test_process_recurring_payment_not_due() {
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
 
     // Set the caller to the subscriber for the entire test
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
@@ -289,7 +284,7 @@ fn test_process_recurring_payment_not_due() {
 #[should_panic(expected: 'Subscription not found')]
 fn test_process_recurring_payment_not_found() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let subscription_dispatcher = IChainLibDispatcher { contract_address };
@@ -310,7 +305,7 @@ fn test_process_recurring_payment_not_found() {
 #[test]
 fn test_process_recurring_payment_event() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -323,6 +318,10 @@ fn test_process_recurring_payment_event() {
 
     // Set the caller to the subscriber for the entire test
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
 
     // Create a token-bound account
     let user_name: felt252 = 'Mark';
@@ -375,7 +374,7 @@ fn test_process_recurring_payment_event() {
 #[should_panic(expected: 'Only admin can verify payments')]
 fn test_verify_payment_admin_only() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -386,6 +385,9 @@ fn test_verify_payment_admin_only() {
 
     // Set the caller to the subscriber for creating a subscription
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
 
     // Create a token-bound account
     let user_name: felt252 = 'Mark';
@@ -416,7 +418,7 @@ fn test_verify_payment_admin_only() {
 #[should_panic(expected: 'Payment not found')]
 fn test_verify_payment_not_found() {
     // Setup the contract
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let _chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -438,7 +440,7 @@ fn test_verify_payment_not_found() {
 #[should_panic(expected: 'Payment already verified')]
 fn test_verify_payment_success() {
     // Setup the contract
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -447,6 +449,9 @@ fn test_verify_payment_success() {
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
 
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
     // Set the caller to the subscriber for creating a subscription
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
 
@@ -478,7 +483,7 @@ fn test_verify_payment_success() {
 #[test]
 fn test_verify_payment_event() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -489,6 +494,10 @@ fn test_verify_payment_event() {
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
 
     // Set the caller to the subscriber for creating a subscription
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
@@ -531,7 +540,7 @@ fn test_verify_payment_event() {
 #[should_panic(expected: 'Only admin can process refunds')]
 fn test_process_refund_admin_only() {
     // Setup the contract
-    let (contract_address, _) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -558,7 +567,10 @@ fn test_process_refund_admin_only() {
 
     // Since this is the first subscription, its ID is 0
     let subscription_id: u256 = 0;
-
+    
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
     // Try to process a refund as a non-admin (should panic)
     // We're still using the subscriber address as the caller
     subscription_dispatcher.process_refund(subscription_id);
@@ -572,7 +584,7 @@ fn test_process_refund_admin_only() {
 #[should_panic(expected: 'Subscription not found')]
 fn test_process_refund_subscription_not_found() {
     // Setup the contract
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let _chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -593,7 +605,7 @@ fn test_process_refund_subscription_not_found() {
 #[test]
 fn test_process_refund_success() {
     // Setup the contract
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -601,6 +613,9 @@ fn test_process_refund_success() {
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
 
     // Set the caller to the subscriber for creating a subscription
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
@@ -636,7 +651,7 @@ fn test_process_refund_success() {
 #[should_panic(expected: 'Subscription not active')]
 fn test_process_refund_already_refunded() {
     // Setup the contract
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -644,7 +659,9 @@ fn test_process_refund_already_refunded() {
 
     // Create a specific subscriber address and use it consistently
     let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
-
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
     // Set the caller to the subscriber for creating a subscription
     cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
 
@@ -685,7 +702,7 @@ fn test_process_refund_already_refunded() {
 #[test]
 fn test_process_refund_event() {
     // Setup the contract
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     // Create dispatchers for both interfaces
     let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
@@ -702,6 +719,10 @@ fn test_process_refund_event() {
     let init_param1: felt252 = 'Mark@yahoo.com';
     let init_param2: felt252 = 'Mark is a boy';
     chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
 
     // Process an initial payment (caller is already set to subscriber)
     let amount: u256 = 100000000000000000; // 0.1 STRK in wei

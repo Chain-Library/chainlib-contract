@@ -9,6 +9,7 @@ mod permission_tests {
     use chain_lib::interfaces::IChainLib::{
         IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait,
     };
+    use chain_lib::utils::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
     use core::array::ArrayTrait;
     use core::option::OptionTrait;
     use snforge_std::{
@@ -18,25 +19,10 @@ mod permission_tests {
     use starknet::contract_address::contract_address_const;
     use starknet::{ContractAddress, get_caller_address};
 
-    fn setup() -> (ContractAddress, ContractAddress) {
-        let declare_result = declare("ChainLib");
-        assert(declare_result.is_ok(), 'declare failed');
-        let admin_address: ContractAddress = contract_address_const::<'admin'>();
-
-        let contract_class = declare_result.unwrap().contract_class();
-        let mut calldata = array![admin_address.into()];
-
-        let deploy_result = contract_class.deploy(@calldata);
-        assert(deploy_result.is_ok(), 'deploy failed');
-
-        let (contract_address, _) = deploy_result.unwrap();
-
-        (contract_address, admin_address)
-    }
 
     #[test]
     fn test_content_access_rules_workflow() {
-        let (contract_address, _) = setup();
+        let (contract_address, _, _) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
         let content_id = 123;
         let user = contract_address_const::<'user'>();
@@ -89,7 +75,7 @@ mod permission_tests {
 
     #[test]
     fn test_verification_workflow() {
-        let (contract_address, admin_address) = setup();
+        let (contract_address, admin_address, _) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
         let content_id = 456;
         let user = contract_address_const::<0x03>();
@@ -156,7 +142,7 @@ mod permission_tests {
 
     #[test]
     fn test_edge_cases() {
-        let (contract_address, admin_address) = setup();
+        let (contract_address, admin_address, _) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
         let content_id = 999;
         let user = contract_address_const::<0x08>();
@@ -196,7 +182,7 @@ mod permission_tests {
     #[test]
     #[should_panic]
     fn test_unauthorized_access() {
-        let (contract_address, _) = setup();
+        let (contract_address, _, _) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
         let content_id = 111;
         let non_admin = contract_address_const::<0x0a>();
@@ -209,7 +195,7 @@ mod permission_tests {
 
     #[test]
     fn test_multiple_verification_types() {
-        let (contract_address, admin_address) = setup();
+        let (contract_address, admin_address, _) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
         let content_id = 222;
         let user = contract_address_const::<0x0b>();
