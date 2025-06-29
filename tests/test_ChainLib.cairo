@@ -3,6 +3,8 @@ use chain_lib::base::types::{PurchaseStatus, Rank, Role, Status};
 use chain_lib::chainlib::ChainLib;
 use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType, PlanType, SubscriptionStatus};
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
+use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
     start_cheat_caller_address, stop_cheat_caller_address,
@@ -28,25 +30,32 @@ fn setup_content_with_price(
     dispatcher.set_content_price(content_id, price);
 }
 
-fn setup() -> (ContractAddress, ContractAddress) {
-    let declare_result = declare("ChainLib");
-    assert(declare_result.is_ok(), 'Contract declaration failed');
+fn setup() -> (ContractAddress, ContractAddress, ContractAddress) {
     let admin_address: ContractAddress = contract_address_const::<'admin'>();
 
+    // Deploy mock ERC20
+    let erc20_class = declare("mock_erc20").unwrap().contract_class();
+    let mut calldata = array![admin_address.into(), admin_address.into(), 6];
+    let (erc20_address, _) = erc20_class.deploy(@calldata).unwrap();
+
+    // Deploy the ChainLib contract
+    let declare_result = declare("ChainLib");
+        assert(declare_result.is_ok(), 'Contract declaration failed');
+
     let contract_class = declare_result.unwrap().contract_class();
-    let mut calldata = array![admin_address.into()];
+    let mut calldata = array![admin_address.into(), erc20_address.into()];
 
     let deploy_result = contract_class.deploy(@calldata);
     assert(deploy_result.is_ok(), 'Contract deployment failed');
 
     let (contract_address, _) = deploy_result.unwrap();
 
-    (contract_address, admin_address)
+    (contract_address, admin_address, erc20_address)
 }
 
 #[test]
 fn test_initial_data() {
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
 
     let dispatcher = IChainLibDispatcher { contract_address };
 
@@ -59,7 +68,7 @@ fn test_initial_data() {
 
 #[test]
 fn test_create_token_bount_account() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -83,7 +92,7 @@ fn test_create_token_bount_account() {
 
 #[test]
 fn test_create_user() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -109,7 +118,7 @@ fn test_create_user() {
 
 #[test]
 fn test_verify_user() {
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -134,7 +143,7 @@ fn test_verify_user() {
 
 #[test]
 fn test_update_user() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -185,7 +194,7 @@ fn test_update_user() {
 
 #[test]
 fn test_deactivate_user() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -216,7 +225,7 @@ fn test_deactivate_user() {
 #[test]
 #[should_panic]
 fn test_deactivate_user_should_panic_if_diffrent_Address() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -248,7 +257,7 @@ fn test_deactivate_user_should_panic_if_diffrent_Address() {
 #[test]
 #[should_panic]
 fn test_update_user_should_panic_when_address_is_0() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -291,7 +300,7 @@ fn test_update_user_should_panic_when_address_is_0() {
 #[test]
 #[should_panic(expected: 'Only admin can verify users')]
 fn test_verify_user_not_admin() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -315,7 +324,7 @@ fn test_verify_user_not_admin() {
 
 #[test]
 fn test_create_subscription() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -339,7 +348,7 @@ fn test_create_subscription() {
 #[test]
 #[should_panic(expected: 'User does not exist')]
 fn test_create_subscription_invalid_user() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -359,7 +368,7 @@ fn test_create_subscription_invalid_user() {
 #[test]
 #[should_panic(expected: "Only WRITER can post content")]
 fn test_grant_premium_access_test_admin() {
-    let (contract_address, admin) = setup();
+    let (contract_address, admin, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -386,7 +395,7 @@ fn test_grant_premium_access_test_admin() {
 #[test]
 #[should_panic(expected: "Only WRITER can post content")]
 fn test_is_in_blacklist() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     let creator = contract_address_const::<'creator'>();
@@ -416,7 +425,7 @@ fn test_is_in_blacklist() {
 #[test]
 #[should_panic(expected: "Only WRITER can post content")]
 fn test_revoke_access_by_admin() {
-    let (contract_address, admin) = setup();
+    let (contract_address, admin, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -443,7 +452,7 @@ fn test_revoke_access_by_admin() {
 
 #[test]
 fn test_has_active_subscription() {
-    let (contract_address, admin) = setup();
+    let (contract_address, admin, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -464,7 +473,7 @@ fn test_has_active_subscription() {
 
 #[test]
 fn test_set_cache_ttl() {
-    let (contract_address, admin) = setup();
+    let (contract_address, admin, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     start_cheat_caller_address(contract_address, admin);
@@ -476,7 +485,7 @@ fn test_set_cache_ttl() {
 #[test]
 #[should_panic(expected: "Only WRITER can post content")]
 fn test_verify_access() {
-    let (contract_address, admin) = setup();
+    let (contract_address, admin, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -502,7 +511,7 @@ fn test_verify_access() {
 #[test]
 #[should_panic(expected: "Only WRITER can post content")]
 fn test_determine_access() {
-    let (contract_address, admin) = setup();
+    let (contract_address, admin, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -527,7 +536,7 @@ fn test_determine_access() {
 
 #[test]
 fn test_purchase_content() {
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
 
@@ -558,7 +567,7 @@ fn test_purchase_content() {
 #[test]
 #[should_panic(expected: "Content either doesn't exist")]
 fn test_purchase_nonexistent_content() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
 
@@ -575,7 +584,7 @@ fn test_purchase_nonexistent_content() {
 
 #[test]
 fn test_get_user_purchases() {
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
 
@@ -584,6 +593,24 @@ fn test_get_user_purchases() {
     let content_id_2: felt252 = 'content2';
     let price: u256 = 1000_u256;
 
+    let token_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+
+    // transfer from origin to user
+    start_cheat_caller_address(contract_address, admin_address);
+    token_dispatcher.transfer(user_address, 1000);
+    stop_cheat_caller_address(contract_address);
+
+    let user_token_balance = token_dispatcher.balance_of(user_address);
+    assert(user_token_balance >= 1000, 'User tokens not gotten');
+
+    // Simulate delegate's approval:
+    start_cheat_caller_address(contract_address, user_address);
+    token_dispatcher.approve(contract_address, 1000);
+    stop_cheat_caller_address(contract_address);
+
+    let allowance = token_dispatcher.allowance(user_address, contract_address);
+    assert(allowance >= 1000, 'Allowance not set correctly');
+    
     // Set admin as caller to prepare the contract state
     cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
 
@@ -618,7 +645,7 @@ fn test_get_user_purchases() {
 
 #[test]
 fn test_verify_purchase() {
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
 
@@ -656,7 +683,7 @@ fn test_verify_purchase() {
 
 #[test]
 fn test_update_purchase_status() {
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
 
@@ -711,7 +738,7 @@ fn test_update_purchase_status() {
 #[test]
 #[should_panic(expected: 'Only admin can update status')]
 fn test_update_purchase_status_not_admin() {
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
     let user_address = contract_address_const::<'user'>();
 
@@ -739,7 +766,7 @@ fn test_update_purchase_status_not_admin() {
 #[test]
 #[should_panic(expected: 'Purchase does not exist')]
 fn test_update_nonexistent_purchase() {
-    let (contract_address, admin_address) = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Set admin as caller
@@ -752,7 +779,7 @@ fn test_update_nonexistent_purchase() {
 
 #[test]
 fn test_cancel_subscription() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
@@ -783,7 +810,7 @@ fn test_cancel_subscription() {
 
 #[test]
 fn test_renew_subscription() {
-    let (contract_address, _) = setup();
+    let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
     // Test input values
