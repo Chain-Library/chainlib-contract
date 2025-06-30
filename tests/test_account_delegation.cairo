@@ -26,23 +26,12 @@ use snforge_std::{
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
-
-fn setup() -> ContractAddress {
-    let contract_class = declare("ChainLib").unwrap().contract_class();
-
-    // Initial owner address
-    let owner: ContractAddress = contract_address_const::<'OWNER'>();
-
-    let calldata = array![owner.into()];
-
-    let (contract_address, _) = contract_class.deploy(@calldata).unwrap();
-    contract_address
-}
+use crate::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 
 
 #[test]
 fn test_create_delegation() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -88,7 +77,7 @@ fn test_create_delegation() {
 #[test]
 #[should_panic(expected: 'Invalid delegate address')]
 fn test_create_delegation_zero_address() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -112,7 +101,7 @@ fn test_create_delegation_zero_address() {
 
 #[test]
 fn test_revoke_delegation() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -157,7 +146,7 @@ fn test_revoke_delegation() {
 #[test]
 #[should_panic(expected: 'Delegate mismatch')]
 fn test_revoke_delegation_wrong_delegate() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -185,7 +174,7 @@ fn test_revoke_delegation_wrong_delegate() {
 
 #[test]
 fn test_use_delegation() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -254,7 +243,7 @@ fn test_use_delegation() {
 #[test]
 #[should_panic(expected: 'Permission denied')]
 fn test_use_delegation_exceed_max_actions() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -287,7 +276,7 @@ fn test_use_delegation_exceed_max_actions() {
 
 #[test]
 fn test_is_delegated_expired() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -324,7 +313,7 @@ fn test_is_delegated_expired() {
 
 #[test]
 fn test_is_delegated_multiple_permissions() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -364,7 +353,7 @@ fn test_is_delegated_multiple_permissions() {
 #[test]
 #[should_panic(expected: 'Permission denied')]
 fn test_use_delegation_wrong_delegate() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -396,7 +385,7 @@ fn test_use_delegation_wrong_delegate() {
 
 #[test]
 fn test_delegation_unlimited() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses
@@ -439,7 +428,7 @@ fn test_delegation_unlimited() {
 
 #[test]
 fn test_get_delegation_info() {
-    let contract_address = setup();
+    let (contract_address, admin_address, erc20_address) = setup();
     let contract_instance = IChainLibDispatcher { contract_address };
 
     // Setup addresses

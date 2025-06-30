@@ -6,3 +6,8 @@ pub mod permission_errors {
     pub const INVALID_PERMISSION: felt252 = 'Invalid permission value';
     pub const ZERO_ADDRESS: felt252 = 'Zero address';
 }
+
+pub mod payment_errors {
+    pub const INSUFFICIENT_ALLOWANCE: felt252 = 'Insufficient token allowance';
+    pub const INSUFFICIENT_BALANCE: felt252 = 'Insufficient token balance';
+}

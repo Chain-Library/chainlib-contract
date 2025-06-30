@@ -11,26 +11,11 @@ mod permission_tests {
     use starknet::class_hash::ClassHash;
     use starknet::contract_address::contract_address_const;
     use starknet::{ContractAddress, get_caller_address};
-
-    fn setup() -> (ContractAddress, ContractAddress) {
-        let declare_result = declare("ChainLib");
-        assert(declare_result.is_ok(), 'declare failed');
-        let admin_address: ContractAddress = contract_address_const::<'admin'>();
-
-        let contract_class = declare_result.unwrap().contract_class();
-        let mut calldata = array![admin_address.into()];
-
-        let deploy_result = contract_class.deploy(@calldata);
-        assert(deploy_result.is_ok(), 'deploy failed');
-
-        let (contract_address, _) = deploy_result.unwrap();
-
-        (contract_address, admin_address)
-    }
+    use crate::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 
     #[test]
     fn test_token_account_owner_permissions() {
-        let (contract_address, _) = setup();
+        let (contract_address, admin_address, erc20_address) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
 
         // Test input values
@@ -50,7 +35,7 @@ mod permission_tests {
 
     #[test]
     fn test_set_and_get_operator_permissions() {
-        let (contract_address, _) = setup();
+        let (contract_address, admin_address, erc20_address) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
 
         // Test input values
@@ -106,7 +91,7 @@ mod permission_tests {
 
     #[test]
     fn test_manage_operators_permission() {
-        let (contract_address, _) = setup();
+        let (contract_address, admin_address, erc20_address) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
 
         // Create a token account
@@ -139,7 +124,7 @@ mod permission_tests {
 
     #[test]
     fn test_modify_account_permissions() {
-        let (contract_address, _) = setup();
+        let (contract_address, admin_address, erc20_address) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
 
         // Create token account
@@ -170,7 +155,7 @@ mod permission_tests {
 
     #[test]
     fn test_multiple_operators() {
-        let (contract_address, _) = setup();
+        let (contract_address, admin_address, erc20_address) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
 
         // Create token account
@@ -247,7 +232,7 @@ mod permission_tests {
 
     #[test]
     fn test_permission_combinations() {
-        let (contract_address, _) = setup();
+        let (contract_address, admin_address, erc20_address) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
 
         // Create token account
@@ -293,7 +278,7 @@ mod permission_tests {
     #[test]
     #[should_panic(expected: 'No permission')]
     fn test_unauthorized_set_operator() {
-        let (contract_address, _) = setup();
+        let (contract_address, admin_address, erc20_address) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
 
         // Create token account
@@ -318,7 +303,7 @@ mod permission_tests {
     #[test]
     #[should_panic(expected: 'No permission')]
     fn test_insufficient_permissions() {
-        let (contract_address, _) = setup();
+        let (contract_address, admin_address, erc20_address) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
 
         // Create token account
@@ -348,7 +333,7 @@ mod permission_tests {
 
     #[test]
     fn test_nonexistent_account() {
-        let (contract_address, _) = setup();
+        let (contract_address, admin_address, erc20_address) = setup();
         let dispatcher = IChainLibDispatcher { contract_address };
 
         // Attempt to get permissions for a non-existent account

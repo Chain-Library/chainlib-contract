@@ -9,3 +9,7 @@ pub mod interfaces {
     pub mod IChainLib;
 }
 
+pub mod presets {
+    pub mod mock_erc20;
+}
+
