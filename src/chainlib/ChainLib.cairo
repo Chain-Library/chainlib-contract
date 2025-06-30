@@ -216,13 +216,12 @@ pub mod ChainLib {
         subscription_count: Map<
             u256, u256,
         >, // subscriber count to number of times the subscription record has been updated
-
         //  RECEIPTS
         receipt_counter: u256,
         receipt: Map<u256, Receipt>,
         creator_sales: Map<ContractAddress, u256>,
-        total_sales_for_content: Map<felt252, u
-        token_address: ContractAddress // Address of the token contract used for payment
+        total_sales_for_content: Map<felt252, u256>,
+        token_address: ContractAddress,
     }
 
 
