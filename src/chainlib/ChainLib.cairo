@@ -14,8 +14,9 @@ pub mod ChainLib {
     };
     use crate::base::errors::payment_errors;
     use crate::base::types::{
-        AccessRule, AccessType, Permissions, Purchase, PurchaseStatus, Rank, Role, Status,
-        TokenBoundAccount, User, VerificationRequirement, VerificationType, permission_flags,
+        AccessRule, AccessType, Permissions, Purchase, PurchaseStatus, Rank, Receipt, ReceiptStatus,
+        Role, Status, TokenBoundAccount, User, VerificationRequirement, VerificationType,
+        permission_flags,
     };
     use crate::interfaces::IChainLib::IChainLib;
 
@@ -215,7 +216,12 @@ pub mod ChainLib {
         subscription_count: Map<
             u256, u256,
         >, // subscriber count to number of times the subscription record has been updated
-        token_address: ContractAddress // Address of the token contract used for payments
+        //  RECEIPTS
+        receipt_counter: u256,
+        receipt: Map<u256, Receipt>,
+        creator_sales: Map<ContractAddress, u256>,
+        total_sales_for_content: Map<felt252, u256>,
+        token_address: ContractAddress,
     }
 
 
@@ -259,6 +265,7 @@ pub mod ChainLib {
         PurchaseStatusUpdated: PurchaseStatusUpdated,
         SubscriptionCancelled: SubscriptionCancelled,
         SubscriptionRenewed: SubscriptionRenewed,
+        ReceiptGenerated: ReceiptGenerated,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -283,6 +290,11 @@ pub mod ChainLib {
         user: ContractAddress,
         subscription_id: u256,
         new_end_time: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct ReceiptGenerated {
+        receipt_id: u256,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -1853,7 +1865,23 @@ pub mod ChainLib {
         fn verify_purchase(ref self: ContractState, purchase_id: u256) -> bool {
             // Get the purchase details
             let purchase = self.purchases.read(purchase_id);
+            let content = self.content.read(purchase.content_id);
+            let total_content_sales = self.total_sales_for_content.read(purchase.content_id)
+                + purchase.price;
 
+            let total_creator_sales = self.creator_sales.read(content.creator) + purchase.price;
+            self.creator_sales.write(content.creator, total_creator_sales);
+
+            self.total_sales_for_content.write(purchase.content_id, total_content_sales);
+            self
+                .issue_receipt(
+                    purchase_id,
+                    purchase.content_id,
+                    purchase.buyer,
+                    content.creator,
+                    purchase.price,
+                    purchase.transaction_hash,
+                );
             // A purchase is valid if its status is Completed
             if purchase.status == PurchaseStatus::Completed {
                 return true;
@@ -1983,6 +2011,61 @@ pub mod ChainLib {
                 );
 
             true
+        }
+
+        fn issue_receipt(
+            ref self: ContractState,
+            purchase_id: u256,
+            content_id: felt252,
+            buyer: ContractAddress,
+            creator: ContractAddress,
+            price: u256,
+            transaction_hash: felt252,
+        ) -> u256 {
+            let receipt_id = self.receipt_counter.read() + 1;
+            let issued_at = starknet::get_block_timestamp();
+
+            let receipt = Receipt {
+                id: receipt_id,
+                purchase_id,
+                content_id,
+                buyer,
+                creator,
+                price,
+                status: ReceiptStatus::Valid,
+                issued_at,
+                transaction_hash,
+            };
+            self.receipt_counter.write(receipt_id);
+            self.receipt.write(receipt_id, receipt);
+
+            self.emit(ReceiptGenerated { receipt_id });
+
+            receipt_id
+        }
+
+        fn get_receipt(self: @ContractState, receipt_id: u256) -> Receipt {
+            let receipt = self.receipt.read(receipt_id);
+            receipt
+        }
+
+        fn is_receipt_valid(self: @ContractState, receipt_id: u256) -> bool {
+            let receipt = self.receipt.read(receipt_id);
+
+            match receipt.status {
+                ReceiptStatus::Valid => true,
+                ReceiptStatus::Invalid => false,
+            }
+        }
+
+        fn get_total_sales_by_creator(self: @ContractState, creator: ContractAddress) -> u256 {
+            let total_sales = self.creator_sales.read(creator);
+            total_sales
+        }
+
+        fn get_total_sales_for_content(self: @ContractState, content_id: felt252) -> u256 {
+            let total_content_sales = self.total_sales_for_content.read(content_id);
+            total_content_sales
         }
     }
 

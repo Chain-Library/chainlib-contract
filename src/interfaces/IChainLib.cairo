@@ -1,7 +1,7 @@
 use core::array::Array;
 use starknet::ContractAddress;
 use crate::base::types::{
-    AccessRule, Permissions, Purchase, PurchaseStatus, Rank, Role, TokenBoundAccount, User,
+    AccessRule, Permissions, Purchase, PurchaseStatus, Rank, Receipt, Role, TokenBoundAccount, User,
     VerificationRequirement, VerificationType,
 };
 use crate::chainlib::ChainLib::ChainLib::{
@@ -213,4 +213,20 @@ pub trait IChainLib<TContractState> {
     fn get_user_subscription_record(ref self: TContractState, user_id: u256) -> Array<Subscription>;
     fn cancel_subscription(ref self: TContractState, user_id: u256) -> bool;
     fn renew_subscription(ref self: TContractState, user_id: u256) -> bool;
+    fn issue_receipt(
+        ref self: TContractState,
+        purchase_id: u256,
+        content_id: felt252,
+        buyer: ContractAddress,
+        creator: ContractAddress,
+        price: u256,
+        transaction_hash: felt252,
+    ) -> u256;
+
+    fn get_receipt(self: @TContractState, receipt_id: u256) -> Receipt;
+    fn is_receipt_valid(self: @TContractState, receipt_id: u256) -> bool;
+    fn get_total_sales_by_creator(self: @TContractState, creator: ContractAddress) -> u256;
+    fn get_total_sales_for_content(self: @TContractState, content_id: felt252) -> u256;
+    // fn get_daily_sales(self: @TContractState, day: u64) -> u256;
+// fn get_unique_buyers_count(self: @TContractState) -> u256;
 }
