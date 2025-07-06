@@ -148,6 +148,63 @@ pub struct Purchase {
     pub timeout_expiry: u64,
 }
 
+#[derive(Copy, Serde, Drop, PartialEq, Debug, starknet::Store)]
+pub enum PayoutStatus {
+    #[default]
+    PENDING,
+    PAID,
+    CANCELLED,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+pub struct Payout {
+    pub id: u64,
+    pub purchase_id: u256,
+    pub recipient: ContractAddress,
+    pub amount: u256,
+    pub timestamp: u64,
+    pub status: PayoutStatus,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store)]
+pub struct PayoutSchedule {
+    pub interval: u64, //interval between payouts, same type as block_timestamp
+    pub start_time: u64,
+    pub last_execution: u64,
+    // pub schedule_id: u256,
+}
+
+#[allow(starknet::store_no_default_variant)]
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+pub enum RefundRequestReason {
+    CONTENT_NOT_RECEIVED,
+    DUPLICATE_PURCHASE,
+    UNABLE_TO_ACCESS,
+    MISREPRESENTED_CONTENT,
+    OTHER: felt252,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+pub enum RefundStatus {
+    #[default]
+    PENDING,
+    TIMED_OUT,
+    DECLINED,
+    APPROVED,
+    PAID
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+pub struct Refund {
+    pub refund_id: u64,
+    pub purchase_id: u256,
+    pub reason: RefundRequestReason,
+    pub user: ContractAddress,
+    pub status: RefundStatus,
+    pub request_timestamp: u64,
+    pub refund_amount: Option<u256>,
+}
+
 
 #[derive(Drop, Serde, starknet::Store, Debug)]
 pub enum ReceiptStatus {

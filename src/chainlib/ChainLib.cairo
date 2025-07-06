@@ -1,6 +1,7 @@
 #[starknet::contract]
 pub mod ChainLib {
     use core::array::{Array, ArrayTrait};
+    use core::num::traits::Zero;
     use core::option::OptionTrait;
     use core::traits::Into;
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
@@ -12,11 +13,11 @@ pub mod ChainLib {
         ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
         get_contract_address,
     };
-    use crate::base::errors::payment_errors;
+    use crate::base::errors::{payment_errors, permission_errors};
     use crate::base::types::{
-        AccessRule, AccessType, Permissions, Purchase, PurchaseStatus, Rank, Receipt, ReceiptStatus,
-        Role, Status, TokenBoundAccount, User, VerificationRequirement, VerificationType,
-        permission_flags,
+        AccessRule, AccessType, Payout, PayoutSchedule, PayoutStatus, Permissions, Purchase,
+        PurchaseStatus, Rank, Receipt, ReceiptStatus, Role, Status, TokenBoundAccount, User,
+        VerificationRequirement, VerificationType, permission_flags, RefundRequestReason, Refund, RefundStatus
     };
     use crate::interfaces::IChainLib::IChainLib;
 
@@ -222,12 +223,24 @@ pub mod ChainLib {
         creator_sales: Map<ContractAddress, u256>,
         total_sales_for_content: Map<felt252, u256>,
         token_address: ContractAddress,
+        platform_fee: u256, //basis points; 1000 = 10%
+        platform_fee_recipient: ContractAddress,
+        payout_schedule: PayoutSchedule,
+        payout_history: Map<ContractAddress, Vec<Payout>>, // map a creator's address to a Vec of his payouts
+        user_refunds: Map<ContractAddress, Vec<Refund>>,
+        refund_window: u64,
     }
 
 
     #[constructor]
     fn constructor(
-        ref self: ContractState, admin: ContractAddress, token_address: ContractAddress,
+        ref self: ContractState,
+        admin: ContractAddress,
+        token_address: ContractAddress,
+        platform_fee: u256,
+        platform_fee_recipient: ContractAddress,
+        payout_schedule_interval: u64,
+        refund_window: u64,
     ) {
         // Store the values in contract state
         self.admin.write(admin);
@@ -235,6 +248,15 @@ pub mod ChainLib {
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
         self.purchase_timeout_duration.write(3600);
+        self.platform_fee.write(platform_fee);
+        self.platform_fee_recipient.write(platform_fee_recipient);
+        let payout_schedule = PayoutSchedule {
+            interval: payout_schedule_interval,
+            start_time: get_block_timestamp(),
+            last_execution: 0,
+        };
+        self.payout_schedule.write(payout_schedule);
+        self.refund_window.write(refund_window);
     }
 
     #[event]
@@ -266,6 +288,7 @@ pub mod ChainLib {
         SubscriptionCancelled: SubscriptionCancelled,
         SubscriptionRenewed: SubscriptionRenewed,
         ReceiptGenerated: ReceiptGenerated,
+        PayoutExecuted: PayoutExecuted,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -436,6 +459,14 @@ pub mod ChainLib {
         pub purchase_id: u256,
         pub new_status: u8, // Using u8 for status code instead of PurchaseStatus enum
         pub timestamp: u64,
+    }
+
+    // Payout and Refunds
+    #[derive(Drop, starknet::Event)]
+    pub struct PayoutExecuted {
+        pub recipients: Array<ContractAddress>,
+        pub timestamp: u64,
+        pub amount_paid: u256,
     }
 
     #[abi(embed_v0)]
@@ -1445,7 +1476,7 @@ pub mod ChainLib {
             let user = self.users.read(user_id);
             assert(user.id == user_id, 'User does not exist');
 
-            let current_time = get_block_timestamp();
+            // let current_time = get_block_timestamp();
 
             // Create a new subscription
             let subscription_id = self.subscription_id.read() + 1;
@@ -1486,7 +1517,7 @@ pub mod ChainLib {
             self.subscriptions.write(user_id, new_subscription.clone());
 
             // read from the subscription
-            self.subscription_record.entry(user_id).append().write(new_subscription);
+            self.subscription_record.entry(user_id).push(new_subscription);
 
             let current_count = self.subscription_count.read(user_id);
             self.subscription_count.write(user_id, current_count + 1);
@@ -1869,8 +1900,26 @@ pub mod ChainLib {
             let total_content_sales = self.total_sales_for_content.read(purchase.content_id)
                 + purchase.price;
 
-            let total_creator_sales = self.creator_sales.read(content.creator) + purchase.price;
+            let platform_fee_percentage = self.platform_fee.read();
+            let platform_fee_recipient = self.platform_fee_recipient.read();
+
+            let actual_platform_fee = (platform_fee_percentage * purchase.price) / 10000;
+            let creators_fraction = purchase.price - actual_platform_fee;
+
+            let total_creator_sales = self.creator_sales.read(content.creator) + creators_fraction;
             self.creator_sales.write(content.creator, total_creator_sales);
+
+            self._single_payout(platform_fee_recipient, actual_platform_fee);
+            let creator_payout_history_id = self.payout_history.entry(content.creator).len();
+            let creator_payout = Payout {
+                id: creator_payout_history_id,
+                purchase_id,
+                recipient: content.creator,
+                amount: creators_fraction,
+                timestamp: get_block_timestamp(),
+                status: PayoutStatus::PENDING
+            };
+            self.payout_history.entry(content.creator).push(creator_payout);
 
             self.total_sales_for_content.write(purchase.content_id, total_content_sales);
             self
@@ -2067,6 +2116,230 @@ pub mod ChainLib {
             let total_content_sales = self.total_sales_for_content.read(content_id);
             total_content_sales
         }
+
+        fn batch_payout_creators(ref self: ContractState) {
+            let current_user_count = self.user_id.read();
+            let mut creators_array: Array<User> = array![];
+            let mut amount_paid_out: u256 = 0;
+            for i in 0..current_user_count {
+                if self.users.read(i).role == Role::WRITER {
+                    creators_array.append(self.users.read(i));
+                }
+            }
+            let mut recipients_array: Array<ContractAddress> = array![];
+
+            for i in 0..creators_array.len() {
+                let current_creator = creators_array.at(i);
+                let current_creator_address = *current_creator.wallet_address;
+                recipients_array.append(current_creator_address);
+
+                let current_creator_payout_history_vec = self.payout_history.entry(current_creator_address);
+                let mut pending_payouts: Array<Payout> = array![];
+                let mut amt_to_be_paid_creator = 0_u256;
+
+                for i in 0..current_creator_payout_history_vec.len() {
+                    let mut payout = current_creator_payout_history_vec.at(i).read();
+                    if payout.status == PayoutStatus::PENDING {
+                        pending_payouts.append(payout);
+                        amt_to_be_paid_creator += payout.amount;
+                        payout.status == PayoutStatus::PAID;
+                    }
+                    current_creator_payout_history_vec.at(i).write(payout);
+                }
+
+                let transfer = self
+                    ._single_payout(current_creator_address, amt_to_be_paid_creator);
+                assert(transfer, 'Transfer failed');
+                amount_paid_out += amt_to_be_paid_creator;
+                self.creator_sales.write(current_creator_address, 0);
+            }
+
+            self.emit(
+                PayoutExecuted {
+                    recipients: recipients_array,
+                    timestamp: get_block_timestamp(),
+                    amount_paid: amount_paid_out
+                }
+            );
+        }
+
+        fn set_payout_schedule(ref self: ContractState, interval: u64) {
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can verify payments');
+            let current_payout_schedule = self.payout_schedule.read();
+            let last_execution_date = current_payout_schedule.last_execution;
+            let new_schedule = PayoutSchedule {
+                interval,
+                start_time: last_execution_date,
+                last_execution: 0
+            };
+            self.payout_schedule.write(new_schedule);
+        }
+
+        fn get_payout_schedule(self: @ContractState) -> (u64, u64) { // interval and last execution time
+            let payout_schedule = self.payout_schedule.read();
+            (payout_schedule.interval, payout_schedule.last_execution)
+        }
+
+        fn request_refund(ref self: ContractState, purchase_id: u256, refund_reason: RefundRequestReason) {
+            let caller = get_caller_address();
+            // let user = self.user_by_address.read(caller);
+            let user_refunds_vec = self.user_refunds.entry(caller);
+            let refund_id = user_refunds_vec.len();
+            let refund_request = Refund {
+                refund_id,
+                purchase_id,
+                reason: refund_reason,
+                user: caller,
+                status: RefundStatus::PENDING,
+                request_timestamp: get_block_timestamp(),
+                refund_amount: Option::None
+            };
+            self.user_refunds.entry(caller).push(refund_request);
+        }
+
+        fn approve_refund(ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>) {
+            let caller = get_caller_address();
+            // Ensure that only an admin can verify users.
+            assert((self.admin.read() == caller), 'Only admin can approve refunds');
+            let user = self.users.read(user_id);
+            let user_address = user.wallet_address;
+            let mut refund = self.user_refunds.entry(user_address).at(refund_id).read();
+            assert(refund.status == RefundStatus::PENDING, 'Request already processed');
+
+            let mut refund_amount = 0;
+
+            let refund_reason = refund.reason;
+            let mut refund_percent = self.get_refund_percentage(refund_reason);
+            if refund_percent == 0 {
+                assert(refund_percentage.is_some(), 'Choose custom percentage');
+                refund_percent = refund_percentage.unwrap();
+            }
+            // We'll take the refund percent later in the contract from the creator payout
+
+            let request_timestamp = refund.request_timestamp;
+            let time_since_request = get_block_timestamp() - request_timestamp;
+            if time_since_request >= self.refund_window.read() {
+                refund.status = RefundStatus::TIMED_OUT;
+            } else {
+                refund.status = RefundStatus::APPROVED;
+            }
+
+            // This should affect the creator payout for that purchase
+
+            let purchase_id = refund.purchase_id;
+            let purchase = self.purchases.read(purchase_id);
+            let content_id = purchase.content_id;
+            let content = self.content.read(content_id);
+            let content_creator = content.creator;
+
+            let creator_payout_vec = self.payout_history.entry(content_creator);
+            let mut dummy_payout_array = array![];
+            // Dummy array that will help retrieve the payout we need to edit
+            for i in 0..creator_payout_vec.len() {
+                let specific_payout = creator_payout_vec.at(i).read();
+                if specific_payout.purchase_id == purchase_id {
+                    dummy_payout_array.append(specific_payout);
+                }
+            }
+            // Retrieve the payout, the length will be one, but we can assert too
+            assert(dummy_payout_array.len() == 1, 'Double Payout-purchase entry');
+            let mut specific_payout = *dummy_payout_array.at(0);
+
+            let refund_amount = refund_percent * specific_payout.amount / 100;
+            specific_payout.amount -= refund_amount;
+            if refund_amount == specific_payout.amount {
+                specific_payout.status = PayoutStatus::CANCELLED;
+            }
+
+
+            self.payout_history.entry(content_creator).at(specific_payout.id).write(specific_payout);
+            self.user_refunds.entry(user_address).at(refund_id).write(refund);
+            
+        }
+
+        fn decline_refund(ref self: ContractState, refund_id: u64, user_id: u256) {
+            let caller = get_caller_address();
+            // Ensure that only an admin can verify users.
+            assert((self.admin.read() == caller), 'Only admin can approve refunds');
+            let user = self.users.read(user_id);
+            let user_address = user.wallet_address;
+            let mut refund = self.user_refunds.entry(user_address).at(refund_id).read();
+            assert(refund.status == RefundStatus::PENDING, 'Request already processed');
+            let request_timestamp = refund.request_timestamp;
+            let time_since_request = get_block_timestamp() - request_timestamp;
+            if time_since_request >= self.refund_window.read() {
+                refund.status = RefundStatus::TIMED_OUT;
+            } else {
+                refund.status = RefundStatus::DECLINED;
+            }
+            self.user_refunds.entry(user_address).at(refund_id).write(refund);
+
+            // Last thought: implement refund windows differently for different reasons.
+            // Also check the access when you refund a user
+        }
+
+        fn refund_user(ref self: ContractState, refund_id: u64, user_id: u256) {
+            let caller = get_caller_address();
+            // Ensure that only an admin can verify users.
+            assert((self.admin.read() == caller), 'Only admin can approve refunds');
+            let user = self.users.read(user_id);
+            let user_address = user.wallet_address;
+            let mut refund = self.user_refunds.entry(user_address).at(refund_id).read();
+            assert(refund.status == RefundStatus::APPROVED, 'Request already processed');
+            refund.status = RefundStatus::PAID;
+            self.user_refunds.entry(user_address).at(refund_id).write(refund);
+
+            let refund_amount = refund.refund_amount.unwrap();
+
+            self._process_refund(refund_amount, user_address);
+
+            // Emit event
+        }
+
+        fn get_user_refunds(self: @ContractState, user_id: u256) -> Array<Refund> {
+            let user = self.users.read(user_id);
+            let user_address = user.wallet_address;
+            let user_refunds_vec = self.user_refunds.entry(user_address);
+            let mut user_refunds_arr = array![];
+
+            for i in 0..user_refunds_vec.len() {
+                let current_refund = user_refunds_vec.at(i).read();
+                user_refunds_arr.append(current_refund);
+            }
+
+            user_refunds_arr
+        }
+
+        fn get_all_pending_refunds(self: @ContractState) -> Array<Refund> {
+            let caller = get_caller_address();
+            // Ensure that only an admin can verify users.
+            assert((self.admin.read() == caller), 'Only admin can approve refunds');
+            
+            let current_user_id = self.user_id.read();
+            let mut all_pending_refunds_arr = array![];
+            let mut all_users_array = array![];
+
+            for i in 0..current_user_id {
+                let current_user = self.users.read(i);
+                all_users_array.append(current_user);
+            }
+
+            for i in 0..all_users_array.len() {
+                let current_user = all_users_array.at(i);
+                let current_user_address = current_user.wallet_address;
+                let current_user_refunds_vec = self.user_refunds.entry(*current_user_address);
+
+                for i in 0..current_user_refunds_vec.len() {
+                    let current_user_refund = current_user_refunds_vec.at(i).read();
+                    if current_user_refund.status == RefundStatus::PENDING {
+                        all_pending_refunds_arr.append(current_user_refund);
+                    }
+                }
+            }
+
+            all_pending_refunds_arr
+        }
     }
 
     #[generate_trait]
@@ -2109,11 +2382,32 @@ pub mod ChainLib {
             assert(balance >= amount, payment_errors::INSUFFICIENT_BALANCE);
         }
 
+        fn _single_payout(
+            ref self: ContractState, recipient_address: ContractAddress, amount: u256,
+        ) -> bool {
+            assert(!recipient_address.is_zero(), permission_errors::ZERO_ADDRESS);
+            let token_dispatcher = IERC20Dispatcher { contract_address: self.token_address.read() };
+            let contract_address = get_contract_address();
+            self._check_token_balance(contract_address, amount);
+            let transfer = token_dispatcher.transfer(recipient_address, amount);
+            transfer
+        }
+
         fn _process_refund(ref self: ContractState, amount: u256, refund_address: ContractAddress) {
             let token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let contract_address = get_contract_address();
             self._check_token_balance(contract_address, amount);
             token.transfer(refund_address, amount);
+        }
+
+        fn get_refund_percentage(ref self: ContractState, refund_reason: RefundRequestReason) -> u256 {
+            match refund_reason {
+                RefundRequestReason::CONTENT_NOT_RECEIVED => 100,
+                RefundRequestReason::DUPLICATE_PURCHASE => 80,
+                RefundRequestReason::UNABLE_TO_ACCESS => 100,
+                RefundRequestReason::MISREPRESENTED_CONTENT => 65,
+                _ => 0
+            }
         }
     }
 }

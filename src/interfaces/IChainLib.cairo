@@ -2,7 +2,7 @@ use core::array::Array;
 use starknet::ContractAddress;
 use crate::base::types::{
     AccessRule, Permissions, Purchase, PurchaseStatus, Rank, Receipt, Role, TokenBoundAccount, User,
-    VerificationRequirement, VerificationType,
+    VerificationRequirement, VerificationType, RefundRequestReason, Refund
 };
 use crate::chainlib::ChainLib::ChainLib::{
     Category, ContentMetadata, ContentType, DelegationInfo, Payment, PlanType, Subscription,
@@ -228,5 +228,15 @@ pub trait IChainLib<TContractState> {
     fn get_total_sales_by_creator(self: @TContractState, creator: ContractAddress) -> u256;
     fn get_total_sales_for_content(self: @TContractState, content_id: felt252) -> u256;
     // fn get_daily_sales(self: @TContractState, day: u64) -> u256;
-// fn get_unique_buyers_count(self: @TContractState) -> u256;
+    // fn get_unique_buyers_count(self: @TContractState) -> u256;
+
+    fn batch_payout_creators(ref self: TContractState);
+    fn set_payout_schedule(ref self: TContractState, interval: u64);
+    fn get_payout_schedule(self: @TContractState) -> (u64, u64); // interval and last execution time
+    fn request_refund(ref self: TContractState, purchase_id: u256, refund_reason: RefundRequestReason);
+    fn approve_refund(ref self: TContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>);
+    fn decline_refund(ref self: TContractState, refund_id: u64, user_id: u256);
+    fn refund_user(ref self: TContractState, refund_id: u64, user_id: u256);  
+    fn get_user_refunds(self: @TContractState, user_id: u256) -> Array<Refund>;
+    fn get_all_pending_refunds(self: @TContractState) -> Array<Refund>;
 }
