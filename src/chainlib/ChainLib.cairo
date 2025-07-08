@@ -240,11 +240,13 @@ pub mod ChainLib {
 
     #[constructor]
     fn constructor(
-        ref self: ContractState, admin: ContractAddress, token_address: ContractAddress,
+        ref self: ContractState,
+        admin: ContractAddress,
+        token_address: ContractAddress,
         // platform_fee: u256,
-    // platform_fee_recipient: ContractAddress,
-    // payout_schedule_interval: u64,
-    // refund_window: u64,
+        // platform_fee_recipient: ContractAddress,
+        // payout_schedule_interval: u64,
+        refund_window: u64,
     ) {
         // Store the values in contract state
         self.admin.write(admin);
@@ -252,15 +254,15 @@ pub mod ChainLib {
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
         self.purchase_timeout_duration.write(3600);
-        // self.platform_fee.write(PLATFORM_FEE);
-    // self.platform_fee_recipient.write(get_contract_address());
-    // let payout_schedule = PayoutSchedule {
-    //     interval: PAYOUT_SCHEDULE_INTERVAL,
-    //     start_time: get_block_timestamp(),
-    //     last_execution: 0,
-    // };
-    // self.payout_schedule.write(payout_schedule);
-    // self.refund_window.write(REFUND_WINDOW);
+        self.platform_fee_recipient.write(admin);
+        self.platform_fee.write(PLATFORM_FEE);
+        let payout_schedule = PayoutSchedule {
+            interval: PAYOUT_SCHEDULE_INTERVAL,
+            start_time: get_block_timestamp(),
+            last_execution: 0,
+        };
+        self.payout_schedule.write(payout_schedule);
+        self.refund_window.write(REFUND_WINDOW);
     }
 
     #[event]
