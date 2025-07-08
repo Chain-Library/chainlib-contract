@@ -2343,8 +2343,9 @@ pub mod ChainLib {
                 );
         }
 
+        // The refund_percentage will only be used if the reason is OTHER
         fn approve_refund(
-            ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>,
+            ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: u256,
         ) {
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
@@ -2358,10 +2359,9 @@ pub mod ChainLib {
             let mut refund_amount = 0;
 
             let refund_reason = refund.reason;
-            let mut refund_percent = self.get_refund_percentage(refund_reason);
+            let mut refund_percent = self._get_refund_percentage(refund_reason);
             if refund_percent == 0 {
-                assert(refund_percentage.is_some(), 'Choose custom percentage');
-                refund_percent = refund_percentage.unwrap();
+                refund_percent = refund_percentage;
             }
             // We'll take the refund percent later in the contract from the creator payout
 
@@ -2587,7 +2587,7 @@ pub mod ChainLib {
             token.transfer(refund_address, amount);
         }
 
-        fn get_refund_percentage(
+        fn _get_refund_percentage(
             ref self: ContractState, refund_reason: RefundRequestReason,
         ) -> u256 {
             match refund_reason {
@@ -2595,7 +2595,7 @@ pub mod ChainLib {
                 RefundRequestReason::DUPLICATE_PURCHASE => 80,
                 RefundRequestReason::UNABLE_TO_ACCESS => 100,
                 RefundRequestReason::MISREPRESENTED_CONTENT => 65,
-                _ => 0,
+                RefundRequestReason::OTHER => 0,
             }
         }
     }
