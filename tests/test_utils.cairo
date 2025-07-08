@@ -17,9 +17,15 @@ pub fn setup() -> (ContractAddress, ContractAddress, ContractAddress) {
     // Deploy the ChainLib contract
     let declare_result = declare("ChainLib");
     assert(declare_result.is_ok(), 'Contract declaration failed');
+    let platform_fee: u256 = 900;
+    let payout_schedule_interval: u64 = 86400 * 7;
+    let refund_window: u64 = 86400 * 2;
 
     let contract_class = declare_result.unwrap().contract_class();
     let mut calldata = array![admin_address.into(), erc20_address.into()];
+    platform_fee.serialize(ref calldata);
+    payout_schedule_interval.serialize(ref calldata);
+    refund_window.serialize(ref calldata);
 
     let deploy_result = contract_class.deploy(@calldata);
     assert(deploy_result.is_ok(), 'Contract deployment failed');
