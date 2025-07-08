@@ -253,6 +253,7 @@ pub mod ChainLib {
         self.token_address.write(token_address);
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
+        self.next_content_id.write(1_felt252);
         self.purchase_timeout_duration.write(3600);
         self.platform_fee_recipient.write(admin);
         // self.platform_fee.write(PLATFORM_FEE);
