@@ -5,8 +5,9 @@ use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType, PlanType, S
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use snforge_std::{
-    CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
-    start_cheat_caller_address, stop_cheat_caller_address,
+    CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_block_timestamp, cheat_caller_address,
+    declare, start_cheat_block_timestamp, start_cheat_caller_address, stop_cheat_block_timestamp,
+    stop_cheat_caller_address,
 };
 use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;
@@ -887,4 +888,97 @@ fn test_renew_subscription() {
     assert(subscription.status == SubscriptionStatus::Active, 'Plan status should be Active');
     let subscription_record = dispatcher.get_user_subscription_record(account_id);
     assert(subscription_record.len() == 1, 'record should have length 1');
+}
+
+#[test]
+fn test_batch_payout_creators() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+    let user_address = contract_address_const::<'user'>();
+    let creator_1 = contract_address_const::<'creator_1'>();
+    let creator_2 = contract_address_const::<'creator_2'>();
+    let creator_3 = contract_address_const::<'creator_3'>();
+    let erc20_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    let creator_1_init_bal = erc20_dispatcher.balance_of(creator_1);
+    let creator_2_init_bal = erc20_dispatcher.balance_of(creator_2);
+    let creator_3_init_bal = erc20_dispatcher.balance_of(creator_3);
+
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
+    // Set up test data
+    let creator1_content_id: felt252 = 'content1';
+    let creator2_content_id: felt252 = 'content2';
+    let creator3_content_id: felt252 = 'content3';
+    let price_1: u256 = 1000_u256;
+    let price_2: u256 = 2000_u256;
+    let price_3: u256 = 1500_u256;
+
+    // Set creator_1 as caller to set up content price
+    cheat_caller_address(contract_address, creator_1, CheatSpan::Indefinite);
+    // Set up content with price
+    setup_content_with_price(dispatcher, creator_1, contract_address, creator1_content_id, price_1);
+
+    // Set creatpr_2 as caller to setup for another piece of content
+    cheat_caller_address(contract_address, creator_2, CheatSpan::Indefinite);
+    // Set up content with price
+    setup_content_with_price(dispatcher, creator_2, contract_address, creator2_content_id, price_2);
+
+    // Set creatpr_2 as caller to setup for another piece of content
+    cheat_caller_address(contract_address, creator_3, CheatSpan::Indefinite);
+    // Set up content with price
+    setup_content_with_price(dispatcher, creator_3, contract_address, creator3_content_id, price_3);
+
+    // Set user as caller
+    cheat_caller_address(contract_address, user_address, CheatSpan::Indefinite);
+
+    // Purchase the content
+    let purchase_id_1 = dispatcher.purchase_content(creator1_content_id, 'tx1');
+    let purchase_id_2 = dispatcher.purchase_content(creator2_content_id, 'tx2');
+    let purchase_id_3 = dispatcher.purchase_content(creator3_content_id, 'tx3');
+
+    // Initially, purchase should not be verified (status is Pending)
+    let is_1_verified = dispatcher.verify_purchase(purchase_id_1);
+    let is_2_verified = dispatcher.verify_purchase(purchase_id_2);
+    let is_3_verified = dispatcher.verify_purchase(purchase_id_3);
+    assert(!is_1_verified, '1 should not be verified');
+    assert(!is_2_verified, '2 should not be verified');
+    assert(!is_3_verified, '3 should not be verified');
+
+    // Set admin as caller to update the purchase status
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+
+    // Update purchase status to Completed
+    let update_result_1 = dispatcher
+        .update_purchase_status(purchase_id_1, PurchaseStatus::Completed);
+    assert(update_result_1, 'Failed to update status1');
+    let update_result_2 = dispatcher
+        .update_purchase_status(purchase_id_2, PurchaseStatus::Completed);
+    assert(update_result_2, 'Failed to update status1');
+    let update_result_3 = dispatcher
+        .update_purchase_status(purchase_id_3, PurchaseStatus::Completed);
+    assert(update_result_3, 'Failed to update status1');
+
+    // Now the purchase should be verified
+    let is_now_verified1 = dispatcher.verify_purchase(purchase_id_1);
+    assert(is_now_verified1, 'Purchase should be verified');
+    let is_now_verified2 = dispatcher.verify_purchase(purchase_id_2);
+    assert(is_now_verified2, 'Purchase should be verified');
+    let is_now_verified3 = dispatcher.verify_purchase(purchase_id_3);
+    assert(is_now_verified3, 'Purchase should be verified');
+
+    let receipt = dispatcher.get_receipt(1);
+
+    assert(receipt.purchase_id == purchase_id_1, 'receipt error');
+
+    // Still admin calling
+
+    // start_cheat_block_timestamp(contract_address);
+    dispatcher.batch_payout_creators();
+
+    let creator_1_new_bal = erc20_dispatcher.balance_of(creator_1);
+    let creator_2_new_bal = erc20_dispatcher.balance_of(creator_2);
+    let creator_3_new_bal = erc20_dispatcher.balance_of(creator_3);
+
+    assert(creator_1_new_bal > creator_1_init_bal, 'Failed to credit creator1');
+    assert(creator_2_new_bal > creator_2_init_bal, 'Failed to credit creator2');
+    assert(creator_3_new_bal > creator_3_init_bal, 'Failed to credit creator3');
 }

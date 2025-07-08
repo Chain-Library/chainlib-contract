@@ -2186,6 +2186,16 @@ pub mod ChainLib {
         }
 
         fn batch_payout_creators(ref self: ContractState) {
+            let caller = get_caller_address();
+            assert(self.admin.read() == caller, 'Only admin can execute payout');
+
+            let payout_schedule = self.payout_schedule.read();
+            let (last_execution, interval) = (
+                payout_schedule.last_execution, payout_schedule.interval,
+            );
+            let current_time = get_block_timestamp();
+            assert(current_time >= (last_execution + interval), 'Payout period not reached');
+
             let current_user_count = self.user_id.read();
             let mut creators_array: Array<User> = array![];
             let mut amount_paid_out: u256 = 0;
