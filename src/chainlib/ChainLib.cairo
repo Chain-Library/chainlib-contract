@@ -2345,7 +2345,7 @@ pub mod ChainLib {
 
         // The refund_percentage will only be used if the reason is OTHER
         fn approve_refund(
-            ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: u256,
+            ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>,
         ) {
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
@@ -2356,12 +2356,11 @@ pub mod ChainLib {
             assert(refund.status != RefundStatus::TIMED_OUT, 'Request already timed out');
             assert(refund.status == RefundStatus::PENDING, 'Request already processed');
 
-            let mut refund_amount = 0;
-
             let refund_reason = refund.reason;
             let mut refund_percent = self._get_refund_percentage(refund_reason);
             if refund_percent == 0 {
-                refund_percent = refund_percentage;
+                assert(refund_percentage.is_some(), 'Custom percentage for other');
+                refund_percent = refund_percentage.unwrap();
             }
             // We'll take the refund percent later in the contract from the creator payout
 
@@ -2403,6 +2402,7 @@ pub mod ChainLib {
                 if refund_amount == specific_payout.amount {
                     specific_payout.status = PayoutStatus::CANCELLED;
                 }
+                refund.refund_amount = Option::Some(refund_amount);
 
                 self
                     .payout_history
@@ -2453,6 +2453,7 @@ pub mod ChainLib {
             self.user_refunds.entry(user_address).at(refund_id).write(refund);
             let purchase_id = refund.purchase_id;
             let content_id = self.purchases.read(purchase_id).content_id;
+            assert(refund.refund_amount.is_some(), 'Refund amount is none');
             let refund_amount = refund.refund_amount.unwrap();
 
             self._process_refund(refund_amount, user_address);

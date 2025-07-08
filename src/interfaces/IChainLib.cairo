@@ -237,7 +237,7 @@ pub trait IChainLib<TContractState> {
         ref self: TContractState, purchase_id: u256, refund_reason: RefundRequestReason,
     );
     fn approve_refund(
-        ref self: TContractState, refund_id: u64, user_id: u256, refund_percentage: u256,
+        ref self: TContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>,
     );
     fn decline_refund(ref self: TContractState, refund_id: u64, user_id: u256);
     fn refund_user(ref self: TContractState, refund_id: u64, user_id: u256);
