@@ -255,7 +255,7 @@ pub mod ChainLib {
         self.next_purchase_id.write(1_u256);
         self.next_content_id.write(0_felt252);
         self.purchase_timeout_duration.write(3600);
-        self.platform_fee_recipient.write(admin);
+        self.platform_fee_recipient.write(get_contract_address());
         // self.platform_fee.write(PLATFORM_FEE);
         self.platform_fee.write(platform_fee);
         let payout_schedule = PayoutSchedule {
