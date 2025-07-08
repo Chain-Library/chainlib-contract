@@ -239,4 +239,6 @@ pub trait IChainLib<TContractState> {
     fn refund_user(ref self: TContractState, refund_id: u64, user_id: u256);  
     fn get_user_refunds(self: @TContractState, user_id: u256) -> Array<Refund>;
     fn get_all_pending_refunds(self: @TContractState) -> Array<Refund>;
+    fn set_platform_fee(ref self: TContractState, platform_fee: u256);
+    fn set_refund_window(ref self: TContractState, window: u64);
 }

@@ -231,16 +231,19 @@ pub mod ChainLib {
         refund_window: u64,
     }
 
+    const REFUND_WINDOW: u64 = 86400;
+    const PLATFORM_FEE: u256 = 900; //9%
+    const PAYOUT_SCHEDULE_INTERVAL: u64 = 86400 * 7;
 
     #[constructor]
     fn constructor(
         ref self: ContractState,
         admin: ContractAddress,
         token_address: ContractAddress,
-        platform_fee: u256,
-        platform_fee_recipient: ContractAddress,
-        payout_schedule_interval: u64,
-        refund_window: u64,
+        // platform_fee: u256,
+        // platform_fee_recipient: ContractAddress,
+        // payout_schedule_interval: u64,
+        // refund_window: u64,
     ) {
         // Store the values in contract state
         self.admin.write(admin);
@@ -248,15 +251,15 @@ pub mod ChainLib {
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
         self.purchase_timeout_duration.write(3600);
-        self.platform_fee.write(platform_fee);
-        self.platform_fee_recipient.write(platform_fee_recipient);
-        let payout_schedule = PayoutSchedule {
-            interval: payout_schedule_interval,
-            start_time: get_block_timestamp(),
-            last_execution: 0,
-        };
-        self.payout_schedule.write(payout_schedule);
-        self.refund_window.write(refund_window);
+        // self.platform_fee.write(PLATFORM_FEE);
+        // self.platform_fee_recipient.write(get_contract_address());
+        // let payout_schedule = PayoutSchedule {
+        //     interval: PAYOUT_SCHEDULE_INTERVAL,
+        //     start_time: get_block_timestamp(),
+        //     last_execution: 0,
+        // };
+        // self.payout_schedule.write(payout_schedule);
+        // self.refund_window.write(REFUND_WINDOW);
     }
 
     #[event]
@@ -289,6 +292,13 @@ pub mod ChainLib {
         SubscriptionRenewed: SubscriptionRenewed,
         ReceiptGenerated: ReceiptGenerated,
         PayoutExecuted: PayoutExecuted,
+        PayoutScheduleSet: PayoutScheduleSet,
+        RefundRequested: RefundRequested,
+        RefundApproved: RefundApproved,
+        RefundDeclined: RefundDeclined,
+        RefundPaid: RefundPaid,
+        PlatformFeeChanged: PlatformFeeChanged,
+        RefundWindowChanged: RefundWindowChanged,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -467,6 +477,58 @@ pub mod ChainLib {
         pub recipients: Array<ContractAddress>,
         pub timestamp: u64,
         pub amount_paid: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PayoutScheduleSet {
+        pub start_time: u64,
+        pub setter: ContractAddress,
+        pub interval: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RefundRequested {
+        pub user: ContractAddress,
+        pub content_id: felt252,
+        pub purchase_id: u256,
+        pub reason: RefundRequestReason,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RefundApproved {
+        pub approver: ContractAddress,
+        pub user_id: u256,
+        pub content_id: felt252,
+        pub refund_id: u64
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RefundDeclined {
+        pub decliner: ContractAddress,
+        pub user_id: u256,
+        pub content_id: felt252,
+        pub refund_id: u64
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RefundPaid {
+        pub refund_id: u64,
+        pub content_id: felt252,
+        pub purchase_id: u256,
+        pub executor: ContractAddress,
+        pub user_id: u256
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PlatformFeeChanged {
+        pub new_fee: u256,
+        pub timestamp: u64
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RefundWindowChanged {
+        pub new_window: u64,
+        pub timestamp: u64
     }
 
     #[abi(embed_v0)]
@@ -2167,13 +2229,23 @@ pub mod ChainLib {
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Only admin can verify payments');
             let current_payout_schedule = self.payout_schedule.read();
-            let last_execution_date = current_payout_schedule.last_execution;
+            let mut last_execution_date = get_block_timestamp();
+            if current_payout_schedule != Default::default() {
+                last_execution_date = current_payout_schedule.last_execution;
+            }
             let new_schedule = PayoutSchedule {
                 interval,
                 start_time: last_execution_date,
                 last_execution: 0
             };
             self.payout_schedule.write(new_schedule);
+            self.emit(
+                PayoutScheduleSet {
+                    start_time: last_execution_date,
+                    setter: caller,
+                    interval,
+                }
+            );
         }
 
         fn get_payout_schedule(self: @ContractState) -> (u64, u64) { // interval and last execution time
@@ -2196,6 +2268,15 @@ pub mod ChainLib {
                 refund_amount: Option::None
             };
             self.user_refunds.entry(caller).push(refund_request);
+            let content_id = self.purchases.read(purchase_id).content_id;
+            self.emit(
+                RefundRequested {
+                    user: caller,
+                    content_id,
+                    purchase_id,
+                    reason: refund_reason
+                }
+            );
         }
 
         fn approve_refund(ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>) {
@@ -2255,7 +2336,14 @@ pub mod ChainLib {
 
             self.payout_history.entry(content_creator).at(specific_payout.id).write(specific_payout);
             self.user_refunds.entry(user_address).at(refund_id).write(refund);
-            
+            self.emit(
+                RefundApproved {
+                    approver: caller,
+                    user_id,
+                    content_id,
+                    refund_id
+                }
+            );
         }
 
         fn decline_refund(ref self: ContractState, refund_id: u64, user_id: u256) {
@@ -2265,6 +2353,8 @@ pub mod ChainLib {
             let user = self.users.read(user_id);
             let user_address = user.wallet_address;
             let mut refund = self.user_refunds.entry(user_address).at(refund_id).read();
+            let purchase = refund.purchase_id;
+            let content_id = self.purchases.read(purchase).content_id;
             assert(refund.status == RefundStatus::PENDING, 'Request already processed');
             let request_timestamp = refund.request_timestamp;
             let time_since_request = get_block_timestamp() - request_timestamp;
@@ -2275,8 +2365,14 @@ pub mod ChainLib {
             }
             self.user_refunds.entry(user_address).at(refund_id).write(refund);
 
-            // Last thought: implement refund windows differently for different reasons.
-            // Also check the access when you refund a user
+            self.emit(
+                RefundDeclined {
+                    decliner: caller,
+                    user_id,
+                    content_id,
+                    refund_id
+                }
+            );
         }
 
         fn refund_user(ref self: ContractState, refund_id: u64, user_id: u256) {
@@ -2289,12 +2385,21 @@ pub mod ChainLib {
             assert(refund.status == RefundStatus::APPROVED, 'Request already processed');
             refund.status = RefundStatus::PAID;
             self.user_refunds.entry(user_address).at(refund_id).write(refund);
-
+            let purchase_id = refund.purchase_id;
+            let content_id = self.purchases.read(purchase_id).content_id;
             let refund_amount = refund.refund_amount.unwrap();
 
             self._process_refund(refund_amount, user_address);
 
-            // Emit event
+            self.emit(
+                RefundPaid {
+                    refund_id,
+                    content_id,
+                    purchase_id: purchase_id,
+                    executor: caller,
+                    user_id
+                }
+            );
         }
 
         fn get_user_refunds(self: @ContractState, user_id: u256) -> Array<Refund> {
@@ -2339,6 +2444,32 @@ pub mod ChainLib {
             }
 
             all_pending_refunds_arr
+        }
+
+        fn set_platform_fee(ref self: ContractState, platform_fee: u256) {
+            let caller = get_caller_address();
+            // Ensure that only an admin can verify users.
+            assert((self.admin.read() == caller), 'Only admin can execute refunds');
+            self.platform_fee.write(platform_fee);
+            self.emit(
+                PlatformFeeChanged {
+                    new_fee: platform_fee,
+                    timestamp: get_block_timestamp()
+                }
+            );
+        }
+
+        fn set_refund_window(ref self: ContractState, window: u64) {
+            let caller = get_caller_address();
+            // Ensure that only an admin can verify users.
+            assert((self.admin.read() == caller), 'Only admin can execute refunds');
+            self.refund_window.write(window);
+            self.emit(
+                RefundWindowChanged {
+                    new_window: window,
+                    timestamp: get_block_timestamp()
+                }
+            );
         }
     }
 

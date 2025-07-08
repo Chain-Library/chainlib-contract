@@ -166,7 +166,7 @@ pub struct Payout {
     pub status: PayoutStatus,
 }
 
-#[derive(Copy, Drop, Serde, starknet::Store)]
+#[derive(Copy, Drop, Serde, Default, PartialEq, starknet::Store)]
 pub struct PayoutSchedule {
     pub interval: u64, //interval between payouts, same type as block_timestamp
     pub start_time: u64,
