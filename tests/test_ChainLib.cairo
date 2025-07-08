@@ -985,15 +985,16 @@ fn test_batch_payout_creators() {
     let purchase_id_3 = dispatcher.purchase_content(creator3_content_id, 'tx3');
 
     // Initially, purchase should not be verified (status is Pending)
-    let is_1_verified = dispatcher.verify_purchase(purchase_id_1);
-    let is_2_verified = dispatcher.verify_purchase(purchase_id_2);
-    let is_3_verified = dispatcher.verify_purchase(purchase_id_3);
-    assert(!is_1_verified, '1 should not be verified');
-    assert(!is_2_verified, '2 should not be verified');
-    assert(!is_3_verified, '3 should not be verified');
+    let is_purchase_1_verified = dispatcher.verify_purchase(purchase_id_1);
+    let is_purchase_2_verified = dispatcher.verify_purchase(purchase_id_2);
+    let is_purchase_3_verified = dispatcher.verify_purchase(purchase_id_3);
+    assert(!is_purchase_1_verified, '1 should not be verified');
+    assert(!is_purchase_2_verified, '2 should not be verified');
+    assert(!is_purchase_3_verified, '3 should not be verified');
 
     // Set admin as caller to update the purchase status
     cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+    cheat_block_timestamp(contract_address, 0, CheatSpan::Indefinite);
 
     // Update purchase status to Completed
     let update_result_1 = dispatcher
@@ -1019,7 +1020,7 @@ fn test_batch_payout_creators() {
     assert(receipt.purchase_id == purchase_id_1, 'receipt error');
 
     // Still admin calling
-
+    cheat_block_timestamp(contract_address, 86400 * 8, CheatSpan::Indefinite);
     // start_cheat_block_timestamp(contract_address);
     dispatcher.batch_payout_creators();
 

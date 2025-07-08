@@ -253,7 +253,7 @@ pub mod ChainLib {
         self.token_address.write(token_address);
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
-        self.next_content_id.write(1_felt252);
+        self.next_content_id.write(0_felt252);
         self.purchase_timeout_duration.write(3600);
         self.platform_fee_recipient.write(admin);
         // self.platform_fee.write(PLATFORM_FEE);
@@ -1862,7 +1862,9 @@ pub mod ChainLib {
         fn purchase_content(
             ref self: ContractState, content_id: felt252, transaction_hash: felt252,
         ) -> u256 {
-            assert!(content_id != 0, "Content ID cannot be empty");
+            // assert!(content_id != 0, "Content ID cannot be empty");
+            // I commented the above line out because in other parts of the project, it is
+            // explicitly stated that first content id should be 0
             assert!(transaction_hash != 0, "Transaction hash cannot be empty");
 
             let price = self.content_prices.read(content_id);
@@ -1967,6 +1969,7 @@ pub mod ChainLib {
         fn verify_purchase(ref self: ContractState, purchase_id: u256) -> bool {
             // Get the purchase details
             let purchase = self.purchases.read(purchase_id);
+            // assert()
             let content = self.content.read(purchase.content_id);
             let total_content_sales = self.total_sales_for_content.read(purchase.content_id)
                 + purchase.price;
@@ -1981,8 +1984,11 @@ pub mod ChainLib {
             self.creator_sales.write(content.creator, total_creator_sales);
 
             self._single_payout(platform_fee_recipient, actual_platform_fee);
+
+            let mut all_payouts = self.payout_history.entry(content.creator);
+
             let creator_payout_history_id = self.payout_history.entry(content.creator).len();
-            let creator_payout = Payout {
+            let mut creator_payout = Payout {
                 id: creator_payout_history_id,
                 purchase_id,
                 recipient: content.creator,
@@ -1990,7 +1996,34 @@ pub mod ChainLib {
                 timestamp: get_block_timestamp(),
                 status: PayoutStatus::PENDING,
             };
-            self.payout_history.entry(content.creator).push(creator_payout);
+
+            for i in 0..all_payouts.len() {
+                let current_payout = all_payouts.at(i).read();
+                if current_payout.purchase_id == purchase_id {
+                    creator_payout.id = current_payout.id;
+                    creator_payout.amount = current_payout.amount;
+                    if purchase.status == PurchaseStatus::Completed {
+                        creator_payout.timestamp = current_payout.timestamp;
+                    } else {
+                        creator_payout.timestamp = get_block_timestamp();
+                    }
+                    creator_payout.status = current_payout.status;
+                    // I left out the timestamp so that the time starts counting from when true is
+                // returned from this function. In other words, when the verify purchase returns
+                // true, the content time in the hands of the user starts counting. This is for
+                // the refund window calculation.
+                }
+            }
+
+            if creator_payout.id >= all_payouts.len() {
+                self.payout_history.entry(content.creator).push(creator_payout);
+            } else {
+                self
+                    .payout_history
+                    .entry(content.creator)
+                    .at(creator_payout.id)
+                    .write(creator_payout);
+            }
 
             self.total_sales_for_content.write(purchase.content_id, total_content_sales);
             self
