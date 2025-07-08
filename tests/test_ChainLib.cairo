@@ -898,6 +898,27 @@ fn test_batch_payout_creators() {
     let creator_1 = contract_address_const::<'creator_1'>();
     let creator_2 = contract_address_const::<'creator_2'>();
     let creator_3 = contract_address_const::<'creator_3'>();
+
+    let username1: felt252 = 'creator_1';
+    let username2: felt252 = 'creator_2';
+    let username3: felt252 = 'creator_3';
+
+    let role: Role = Role::WRITER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    start_cheat_caller_address(contract_address, creator_1);
+    let creator1_id = dispatcher.register_user(username1, role.clone(), rank.clone(), metadata);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_2);
+    let creator2_id = dispatcher.register_user(username2, role.clone(), rank.clone(), metadata);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_3);
+    let creator3_id = dispatcher.register_user(username3, role.clone(), rank.clone(), metadata);
+    stop_cheat_caller_address(contract_address);
+
     let erc20_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
     let creator_1_init_bal = erc20_dispatcher.balance_of(creator_1);
     let creator_2_init_bal = erc20_dispatcher.balance_of(creator_2);
