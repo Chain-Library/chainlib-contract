@@ -1178,7 +1178,7 @@ fn test_refund_flow_approve_refund_request() {
     let refund_request = refunds_array.at(0);
     assert(*refund_request.status == RefundStatus::PENDING, 'Wrong refund status');
 
-    dispatcher.approve_refund(*refund_request.refund_id, user_id, 20);
+    dispatcher.approve_refund(*refund_request.refund_id, user_id, Option::None);
     let new_refunds_array = dispatcher.get_user_refunds(user_id);
     let new_refund_request = new_refunds_array.at(0);
     assert(*new_refund_request.status == RefundStatus::APPROVED, 'Failed to change refund status');
