@@ -306,6 +306,7 @@ pub mod ChainLib {
         RefundPaid: RefundPaid,
         PlatformFeeChanged: PlatformFeeChanged,
         RefundWindowChanged: RefundWindowChanged,
+        RefundTimedOut: RefundTimedOut,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -512,6 +513,13 @@ pub mod ChainLib {
     #[derive(Drop, starknet::Event)]
     pub struct RefundDeclined {
         pub decliner: ContractAddress,
+        pub user_id: u256,
+        pub content_id: felt252,
+        pub refund_id: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RefundTimedOut {
         pub user_id: u256,
         pub content_id: felt252,
         pub refund_id: u64,
@@ -2322,6 +2330,11 @@ pub mod ChainLib {
             };
             self.user_refunds.entry(caller).push(refund_request);
             let content_id = self.purchases.read(purchase_id).content_id;
+            let purchased_at = self.purchases.read(purchase_id).timestamp;
+            assert(
+                (get_block_timestamp() - purchased_at) < self.refund_window.read(),
+                'Refund window already closed',
+            );
             self
                 .emit(
                     RefundRequested {
@@ -2339,6 +2352,7 @@ pub mod ChainLib {
             let user = self.users.read(user_id);
             let user_address = user.wallet_address;
             let mut refund = self.user_refunds.entry(user_address).at(refund_id).read();
+            assert(refund.status != RefundStatus::TIMED_OUT, 'Request already timed out');
             assert(refund.status == RefundStatus::PENDING, 'Request already processed');
 
             let mut refund_amount = 0;
@@ -2355,44 +2369,49 @@ pub mod ChainLib {
             let time_since_request = get_block_timestamp() - request_timestamp;
             if time_since_request >= self.refund_window.read() {
                 refund.status = RefundStatus::TIMED_OUT;
+                let purchase_id = refund.purchase_id;
+                let purchase = self.purchases.read(purchase_id);
+                let content_id = purchase.content_id;
+                // let content = self.content.read(content_id);
+                self.user_refunds.entry(user_address).at(refund_id).write(refund);
+                self.emit(RefundTimedOut { user_id, content_id, refund_id })
             } else {
                 refund.status = RefundStatus::APPROVED;
-            }
+                // This should affect the creator payout for that purchase
 
-            // This should affect the creator payout for that purchase
+                let purchase_id = refund.purchase_id;
+                let purchase = self.purchases.read(purchase_id);
+                let content_id = purchase.content_id;
+                let content = self.content.read(content_id);
+                let content_creator = content.creator;
 
-            let purchase_id = refund.purchase_id;
-            let purchase = self.purchases.read(purchase_id);
-            let content_id = purchase.content_id;
-            let content = self.content.read(content_id);
-            let content_creator = content.creator;
-
-            let creator_payout_vec = self.payout_history.entry(content_creator);
-            let mut dummy_payout_array = array![];
-            // Dummy array that will help retrieve the payout we need to edit
-            for i in 0..creator_payout_vec.len() {
-                let specific_payout = creator_payout_vec.at(i).read();
-                if specific_payout.purchase_id == purchase_id {
-                    dummy_payout_array.append(specific_payout);
+                let creator_payout_vec = self.payout_history.entry(content_creator);
+                let mut dummy_payout_array = array![];
+                // Dummy array that will help retrieve the payout we need to edit
+                for i in 0..creator_payout_vec.len() {
+                    let specific_payout = creator_payout_vec.at(i).read();
+                    if specific_payout.purchase_id == purchase_id {
+                        dummy_payout_array.append(specific_payout);
+                    }
                 }
-            }
-            // Retrieve the payout, the length will be one, but we can assert too
-            assert(dummy_payout_array.len() == 1, 'Double Payout-purchase entry');
-            let mut specific_payout = *dummy_payout_array.at(0);
+                // Retrieve the payout, the length will be one, but we can assert too
+                assert(dummy_payout_array.len() == 1, 'Double Payout-purchase entry');
+                let mut specific_payout = *dummy_payout_array.at(0);
 
-            let refund_amount = refund_percent * specific_payout.amount / 100;
-            specific_payout.amount -= refund_amount;
-            if refund_amount == specific_payout.amount {
-                specific_payout.status = PayoutStatus::CANCELLED;
-            }
+                let refund_amount = refund_percent * specific_payout.amount / 100;
+                specific_payout.amount -= refund_amount;
+                if refund_amount == specific_payout.amount {
+                    specific_payout.status = PayoutStatus::CANCELLED;
+                }
 
-            self
-                .payout_history
-                .entry(content_creator)
-                .at(specific_payout.id)
-                .write(specific_payout);
-            self.user_refunds.entry(user_address).at(refund_id).write(refund);
-            self.emit(RefundApproved { approver: caller, user_id, content_id, refund_id });
+                self
+                    .payout_history
+                    .entry(content_creator)
+                    .at(specific_payout.id)
+                    .write(specific_payout);
+                self.user_refunds.entry(user_address).at(refund_id).write(refund);
+                self.emit(RefundApproved { approver: caller, user_id, content_id, refund_id });
+            }
         }
 
         fn decline_refund(ref self: ContractState, refund_id: u64, user_id: u256) {
@@ -2409,12 +2428,17 @@ pub mod ChainLib {
             let time_since_request = get_block_timestamp() - request_timestamp;
             if time_since_request >= self.refund_window.read() {
                 refund.status = RefundStatus::TIMED_OUT;
+                let purchase_id = refund.purchase_id;
+                let purchase = self.purchases.read(purchase_id);
+                let content_id = purchase.content_id;
+                // let content = self.content.read(content_id);
+                self.user_refunds.entry(user_address).at(refund_id).write(refund);
+                self.emit(RefundTimedOut { user_id, content_id, refund_id })
             } else {
                 refund.status = RefundStatus::DECLINED;
+                self.emit(RefundDeclined { decliner: caller, user_id, content_id, refund_id });
+                self.user_refunds.entry(user_address).at(refund_id).write(refund);
             }
-            self.user_refunds.entry(user_address).at(refund_id).write(refund);
-
-            self.emit(RefundDeclined { decliner: caller, user_id, content_id, refund_id });
         }
 
         fn refund_user(ref self: ContractState, refund_id: u64, user_id: u256) {
@@ -2424,7 +2448,7 @@ pub mod ChainLib {
             let user = self.users.read(user_id);
             let user_address = user.wallet_address;
             let mut refund = self.user_refunds.entry(user_address).at(refund_id).read();
-            assert(refund.status == RefundStatus::APPROVED, 'Request already processed');
+            assert(refund.status == RefundStatus::APPROVED, 'Refund request declined');
             refund.status = RefundStatus::PAID;
             self.user_refunds.entry(user_address).at(refund_id).write(refund);
             let purchase_id = refund.purchase_id;
