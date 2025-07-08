@@ -240,13 +240,11 @@ pub mod ChainLib {
 
     #[constructor]
     fn constructor(
-        ref self: ContractState,
-        admin: ContractAddress,
-        token_address: ContractAddress,
+        ref self: ContractState, admin: ContractAddress, token_address: ContractAddress,
         // platform_fee: u256,
-        // platform_fee_recipient: ContractAddress,
-        // payout_schedule_interval: u64,
-        refund_window: u64,
+    // platform_fee_recipient: ContractAddress,
+    // payout_schedule_interval: u64,
+    // refund_window: u64,
     ) {
         // Store the values in contract state
         self.admin.write(admin);
