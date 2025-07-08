@@ -191,7 +191,7 @@ pub enum RefundStatus {
     TIMED_OUT,
     DECLINED,
     APPROVED,
-    PAID
+    PAID,
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]

@@ -16,8 +16,9 @@ pub mod ChainLib {
     use crate::base::errors::{payment_errors, permission_errors};
     use crate::base::types::{
         AccessRule, AccessType, Payout, PayoutSchedule, PayoutStatus, Permissions, Purchase,
-        PurchaseStatus, Rank, Receipt, ReceiptStatus, Role, Status, TokenBoundAccount, User,
-        VerificationRequirement, VerificationType, permission_flags, RefundRequestReason, Refund, RefundStatus
+        PurchaseStatus, Rank, Receipt, ReceiptStatus, Refund, RefundRequestReason, RefundStatus,
+        Role, Status, TokenBoundAccount, User, VerificationRequirement, VerificationType,
+        permission_flags,
     };
     use crate::interfaces::IChainLib::IChainLib;
 
@@ -226,7 +227,9 @@ pub mod ChainLib {
         platform_fee: u256, //basis points; 1000 = 10%
         platform_fee_recipient: ContractAddress,
         payout_schedule: PayoutSchedule,
-        payout_history: Map<ContractAddress, Vec<Payout>>, // map a creator's address to a Vec of his payouts
+        payout_history: Map<
+            ContractAddress, Vec<Payout>,
+        >, // map a creator's address to a Vec of his payouts
         user_refunds: Map<ContractAddress, Vec<Refund>>,
         refund_window: u64,
     }
@@ -237,13 +240,11 @@ pub mod ChainLib {
 
     #[constructor]
     fn constructor(
-        ref self: ContractState,
-        admin: ContractAddress,
-        token_address: ContractAddress,
+        ref self: ContractState, admin: ContractAddress, token_address: ContractAddress,
         // platform_fee: u256,
-        // platform_fee_recipient: ContractAddress,
-        // payout_schedule_interval: u64,
-        // refund_window: u64,
+    // platform_fee_recipient: ContractAddress,
+    // payout_schedule_interval: u64,
+    // refund_window: u64,
     ) {
         // Store the values in contract state
         self.admin.write(admin);
@@ -252,14 +253,14 @@ pub mod ChainLib {
         self.next_purchase_id.write(1_u256);
         self.purchase_timeout_duration.write(3600);
         // self.platform_fee.write(PLATFORM_FEE);
-        // self.platform_fee_recipient.write(get_contract_address());
-        // let payout_schedule = PayoutSchedule {
-        //     interval: PAYOUT_SCHEDULE_INTERVAL,
-        //     start_time: get_block_timestamp(),
-        //     last_execution: 0,
-        // };
-        // self.payout_schedule.write(payout_schedule);
-        // self.refund_window.write(REFUND_WINDOW);
+    // self.platform_fee_recipient.write(get_contract_address());
+    // let payout_schedule = PayoutSchedule {
+    //     interval: PAYOUT_SCHEDULE_INTERVAL,
+    //     start_time: get_block_timestamp(),
+    //     last_execution: 0,
+    // };
+    // self.payout_schedule.write(payout_schedule);
+    // self.refund_window.write(REFUND_WINDOW);
     }
 
     #[event]
@@ -499,7 +500,7 @@ pub mod ChainLib {
         pub approver: ContractAddress,
         pub user_id: u256,
         pub content_id: felt252,
-        pub refund_id: u64
+        pub refund_id: u64,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -507,7 +508,7 @@ pub mod ChainLib {
         pub decliner: ContractAddress,
         pub user_id: u256,
         pub content_id: felt252,
-        pub refund_id: u64
+        pub refund_id: u64,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -516,19 +517,19 @@ pub mod ChainLib {
         pub content_id: felt252,
         pub purchase_id: u256,
         pub executor: ContractAddress,
-        pub user_id: u256
+        pub user_id: u256,
     }
 
     #[derive(Drop, starknet::Event)]
     pub struct PlatformFeeChanged {
         pub new_fee: u256,
-        pub timestamp: u64
+        pub timestamp: u64,
     }
 
     #[derive(Drop, starknet::Event)]
     pub struct RefundWindowChanged {
         pub new_window: u64,
-        pub timestamp: u64
+        pub timestamp: u64,
     }
 
     #[abi(embed_v0)]
@@ -1979,7 +1980,7 @@ pub mod ChainLib {
                 recipient: content.creator,
                 amount: creators_fraction,
                 timestamp: get_block_timestamp(),
-                status: PayoutStatus::PENDING
+                status: PayoutStatus::PENDING,
             };
             self.payout_history.entry(content.creator).push(creator_payout);
 
@@ -2195,7 +2196,9 @@ pub mod ChainLib {
                 let current_creator_address = *current_creator.wallet_address;
                 recipients_array.append(current_creator_address);
 
-                let current_creator_payout_history_vec = self.payout_history.entry(current_creator_address);
+                let current_creator_payout_history_vec = self
+                    .payout_history
+                    .entry(current_creator_address);
                 let mut pending_payouts: Array<Payout> = array![];
                 let mut amt_to_be_paid_creator = 0_u256;
 
@@ -2209,20 +2212,20 @@ pub mod ChainLib {
                     current_creator_payout_history_vec.at(i).write(payout);
                 }
 
-                let transfer = self
-                    ._single_payout(current_creator_address, amt_to_be_paid_creator);
+                let transfer = self._single_payout(current_creator_address, amt_to_be_paid_creator);
                 assert(transfer, 'Transfer failed');
                 amount_paid_out += amt_to_be_paid_creator;
                 self.creator_sales.write(current_creator_address, 0);
             }
 
-            self.emit(
-                PayoutExecuted {
-                    recipients: recipients_array,
-                    timestamp: get_block_timestamp(),
-                    amount_paid: amount_paid_out
-                }
-            );
+            self
+                .emit(
+                    PayoutExecuted {
+                        recipients: recipients_array,
+                        timestamp: get_block_timestamp(),
+                        amount_paid: amount_paid_out,
+                    },
+                );
         }
 
         fn set_payout_schedule(ref self: ContractState, interval: u64) {
@@ -2234,26 +2237,25 @@ pub mod ChainLib {
                 last_execution_date = current_payout_schedule.last_execution;
             }
             let new_schedule = PayoutSchedule {
-                interval,
-                start_time: last_execution_date,
-                last_execution: 0
+                interval, start_time: last_execution_date, last_execution: 0,
             };
             self.payout_schedule.write(new_schedule);
-            self.emit(
-                PayoutScheduleSet {
-                    start_time: last_execution_date,
-                    setter: caller,
-                    interval,
-                }
-            );
+            self
+                .emit(
+                    PayoutScheduleSet { start_time: last_execution_date, setter: caller, interval },
+                );
         }
 
-        fn get_payout_schedule(self: @ContractState) -> (u64, u64) { // interval and last execution time
+        fn get_payout_schedule(
+            self: @ContractState,
+        ) -> (u64, u64) { // interval and last execution time
             let payout_schedule = self.payout_schedule.read();
             (payout_schedule.interval, payout_schedule.last_execution)
         }
 
-        fn request_refund(ref self: ContractState, purchase_id: u256, refund_reason: RefundRequestReason) {
+        fn request_refund(
+            ref self: ContractState, purchase_id: u256, refund_reason: RefundRequestReason,
+        ) {
             let caller = get_caller_address();
             // let user = self.user_by_address.read(caller);
             let user_refunds_vec = self.user_refunds.entry(caller);
@@ -2265,21 +2267,21 @@ pub mod ChainLib {
                 user: caller,
                 status: RefundStatus::PENDING,
                 request_timestamp: get_block_timestamp(),
-                refund_amount: Option::None
+                refund_amount: Option::None,
             };
             self.user_refunds.entry(caller).push(refund_request);
             let content_id = self.purchases.read(purchase_id).content_id;
-            self.emit(
-                RefundRequested {
-                    user: caller,
-                    content_id,
-                    purchase_id,
-                    reason: refund_reason
-                }
-            );
+            self
+                .emit(
+                    RefundRequested {
+                        user: caller, content_id, purchase_id, reason: refund_reason,
+                    },
+                );
         }
 
-        fn approve_refund(ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>) {
+        fn approve_refund(
+            ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>,
+        ) {
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can approve refunds');
@@ -2333,17 +2335,13 @@ pub mod ChainLib {
                 specific_payout.status = PayoutStatus::CANCELLED;
             }
 
-
-            self.payout_history.entry(content_creator).at(specific_payout.id).write(specific_payout);
+            self
+                .payout_history
+                .entry(content_creator)
+                .at(specific_payout.id)
+                .write(specific_payout);
             self.user_refunds.entry(user_address).at(refund_id).write(refund);
-            self.emit(
-                RefundApproved {
-                    approver: caller,
-                    user_id,
-                    content_id,
-                    refund_id
-                }
-            );
+            self.emit(RefundApproved { approver: caller, user_id, content_id, refund_id });
         }
 
         fn decline_refund(ref self: ContractState, refund_id: u64, user_id: u256) {
@@ -2365,14 +2363,7 @@ pub mod ChainLib {
             }
             self.user_refunds.entry(user_address).at(refund_id).write(refund);
 
-            self.emit(
-                RefundDeclined {
-                    decliner: caller,
-                    user_id,
-                    content_id,
-                    refund_id
-                }
-            );
+            self.emit(RefundDeclined { decliner: caller, user_id, content_id, refund_id });
         }
 
         fn refund_user(ref self: ContractState, refund_id: u64, user_id: u256) {
@@ -2391,15 +2382,12 @@ pub mod ChainLib {
 
             self._process_refund(refund_amount, user_address);
 
-            self.emit(
-                RefundPaid {
-                    refund_id,
-                    content_id,
-                    purchase_id: purchase_id,
-                    executor: caller,
-                    user_id
-                }
-            );
+            self
+                .emit(
+                    RefundPaid {
+                        refund_id, content_id, purchase_id: purchase_id, executor: caller, user_id,
+                    },
+                );
         }
 
         fn get_user_refunds(self: @ContractState, user_id: u256) -> Array<Refund> {
@@ -2420,7 +2408,7 @@ pub mod ChainLib {
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can approve refunds');
-            
+
             let current_user_id = self.user_id.read();
             let mut all_pending_refunds_arr = array![];
             let mut all_users_array = array![];
@@ -2451,12 +2439,10 @@ pub mod ChainLib {
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can execute refunds');
             self.platform_fee.write(platform_fee);
-            self.emit(
-                PlatformFeeChanged {
-                    new_fee: platform_fee,
-                    timestamp: get_block_timestamp()
-                }
-            );
+            self
+                .emit(
+                    PlatformFeeChanged { new_fee: platform_fee, timestamp: get_block_timestamp() },
+                );
         }
 
         fn set_refund_window(ref self: ContractState, window: u64) {
@@ -2464,12 +2450,7 @@ pub mod ChainLib {
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can execute refunds');
             self.refund_window.write(window);
-            self.emit(
-                RefundWindowChanged {
-                    new_window: window,
-                    timestamp: get_block_timestamp()
-                }
-            );
+            self.emit(RefundWindowChanged { new_window: window, timestamp: get_block_timestamp() });
         }
     }
 
@@ -2531,13 +2512,15 @@ pub mod ChainLib {
             token.transfer(refund_address, amount);
         }
 
-        fn get_refund_percentage(ref self: ContractState, refund_reason: RefundRequestReason) -> u256 {
+        fn get_refund_percentage(
+            ref self: ContractState, refund_reason: RefundRequestReason,
+        ) -> u256 {
             match refund_reason {
                 RefundRequestReason::CONTENT_NOT_RECEIVED => 100,
                 RefundRequestReason::DUPLICATE_PURCHASE => 80,
                 RefundRequestReason::UNABLE_TO_ACCESS => 100,
                 RefundRequestReason::MISREPRESENTED_CONTENT => 65,
-                _ => 0
+                _ => 0,
             }
         }
     }
