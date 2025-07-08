@@ -905,29 +905,42 @@ fn test_batch_payout_creators() {
 
     token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
     // Set up test data
-    let creator1_content_id: felt252 = 'content1';
-    let creator2_content_id: felt252 = 'content2';
-    let creator3_content_id: felt252 = 'content3';
+    let title1: felt252 = 'Creator 1 content';
+    let title2: felt252 = 'Creator 2 content';
+    let title3: felt252 = 'Creator 3 content';
+
+    let description: felt252 = 'This is a test content';
+    let content_type: ContentType = ContentType::Text;
+    let category: Category = Category::Education;
+
+    let creator1_content_id: felt252 = dispatcher
+        .register_content(title1, description, content_type, category);
+    let creator2_content_id: felt252 = dispatcher
+        .register_content(title2, description, content_type, category);
+    let creator3_content_id: felt252 = dispatcher
+        .register_content(title3, description, content_type, category);
     let price_1: u256 = 1000_u256;
     let price_2: u256 = 2000_u256;
     let price_3: u256 = 1500_u256;
 
     // Set creator_1 as caller to set up content price
-    cheat_caller_address(contract_address, creator_1, CheatSpan::Indefinite);
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
     // Set up content with price
-    setup_content_with_price(dispatcher, creator_1, contract_address, creator1_content_id, price_1);
+    setup_content_with_price(
+        dispatcher, admin_address, contract_address, creator1_content_id, price_1,
+    );
 
-    // Set creatpr_2 as caller to setup for another piece of content
-    cheat_caller_address(contract_address, creator_2, CheatSpan::Indefinite);
     // Set up content with price
-    setup_content_with_price(dispatcher, creator_2, contract_address, creator2_content_id, price_2);
+    setup_content_with_price(
+        dispatcher, admin_address, contract_address, creator2_content_id, price_2,
+    );
 
-    // Set creatpr_2 as caller to setup for another piece of content
-    cheat_caller_address(contract_address, creator_3, CheatSpan::Indefinite);
     // Set up content with price
-    setup_content_with_price(dispatcher, creator_3, contract_address, creator3_content_id, price_3);
+    setup_content_with_price(
+        dispatcher, admin_address, contract_address, creator3_content_id, price_3,
+    );
 
-    // Set user as caller
+    // Set user as content consumer
     cheat_caller_address(contract_address, user_address, CheatSpan::Indefinite);
 
     // Purchase the content
