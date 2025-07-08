@@ -698,7 +698,9 @@ pub mod ChainLib {
             assert((self.admin.read() == caller), 'Only admin can verify users');
             let mut user = self.users.read(user_id);
             user.verified = true;
-            self.users.write(user.id, user);
+            let user_address = user.wallet_address;
+            self.users.write(user.id, user.clone());
+            self.user_by_address.write(user_address, user.clone());
             true
         }
         fn retrieve_user_profile(ref self: ContractState, user_id: u256) -> User {

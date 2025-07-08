@@ -909,6 +909,7 @@ fn test_batch_payout_creators() {
 
     start_cheat_caller_address(contract_address, creator_1);
     let creator1_id = dispatcher.register_user(username1, role.clone(), rank.clone(), metadata);
+    println!("successfully registered creator_1 as writer");
     stop_cheat_caller_address(contract_address);
 
     start_cheat_caller_address(contract_address, creator_2);
@@ -917,6 +918,12 @@ fn test_batch_payout_creators() {
 
     start_cheat_caller_address(contract_address, creator_3);
     let creator3_id = dispatcher.register_user(username3, role.clone(), rank.clone(), metadata);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, admin_address);
+    let is_creator_1_verified = dispatcher.verify_user(creator1_id);
+    let is_creator_2_verified = dispatcher.verify_user(creator2_id);
+    let is_creator_3_verified = dispatcher.verify_user(creator3_id);
     stop_cheat_caller_address(contract_address);
 
     let erc20_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
@@ -934,12 +941,20 @@ fn test_batch_payout_creators() {
     let content_type: ContentType = ContentType::Text;
     let category: Category = Category::Education;
 
+    start_cheat_caller_address(contract_address, creator_1);
     let creator1_content_id: felt252 = dispatcher
         .register_content(title1, description, content_type, category);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_2);
     let creator2_content_id: felt252 = dispatcher
         .register_content(title2, description, content_type, category);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_3);
     let creator3_content_id: felt252 = dispatcher
         .register_content(title3, description, content_type, category);
+    stop_cheat_caller_address(contract_address);
     let price_1: u256 = 1000_u256;
     let price_2: u256 = 2000_u256;
     let price_3: u256 = 1500_u256;
