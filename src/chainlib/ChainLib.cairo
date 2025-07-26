@@ -33,6 +33,9 @@ pub mod ChainLib {
         const FULL_DELEGATION: u64 = 0xF0000;
     }
 
+    const GRACE_PERIOD: u64 = 7 * 24 * 60 * 60;
+    const PRORATION_PRECISION: u256 = 1_000_000_000_000_000_000; 
+
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
     pub struct DelegationInfo {
         pub delegator: ContractAddress, // The account owner who created the delegation
@@ -92,6 +95,7 @@ pub mod ChainLib {
         pub last_payment_date: u64,
         pub subscription_type: PlanType,
         pub status: SubscriptionStatus,
+        pub grace_period_end: u64
     }
 
     #[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
@@ -126,6 +130,30 @@ pub mod ChainLib {
         pub timestamp: u64,
         pub is_verified: bool,
         pub is_refunded: bool,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct AccessToken {
+        pub token_id: u256,
+        pub user_id: u256,
+        pub content_id: felt252,
+        pub expiry: u64,
+        pub is_active: bool,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct SubscriptionPlan {
+        pub plan_id: u256,
+        pub content_id: felt252,
+        pub duration: u64,
+        pub price: u256,
+        pub is_active: bool,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct ContentLicense {
+        pub content_id: felt252,
+        pub license_type: u8, // 0: One-time, 1: Subscription, 2: Time-limited
     }
 
     #[storage]
@@ -222,6 +250,12 @@ pub mod ChainLib {
         creator_sales: Map<ContractAddress, u256>,
         total_sales_for_content: Map<felt252, u256>,
         token_address: ContractAddress,
+        access_tokens: Map<u256, AccessToken>,
+        next_token_id: u256,
+        user_content_tokens: Map<(u256, felt252), u256>,
+        subscription_plans: Map<u256, SubscriptionPlan>,
+        next_plan_id: u256,
+        content_licenses: Map<felt252, ContentLicense>,
     }
 
 
@@ -235,6 +269,8 @@ pub mod ChainLib {
         // Initialize purchase ID counter
         self.next_purchase_id.write(1_u256);
         self.purchase_timeout_duration.write(3600);
+        self.next_token_id.write(1_u256);
+        self.next_plan_id.write(1_u256);
     }
 
     #[event]
@@ -266,6 +302,47 @@ pub mod ChainLib {
         SubscriptionCancelled: SubscriptionCancelled,
         SubscriptionRenewed: SubscriptionRenewed,
         ReceiptGenerated: ReceiptGenerated,
+        AccessTokenGenerated: AccessTokenGenerated,
+        AccessTokenRevoked: AccessTokenRevoked,
+        SubscriptionPlanCreated: SubscriptionPlanCreated,
+        SubscriptionUpgraded: SubscriptionUpgraded,
+        ContentLicenseSet: ContentLicenseSet,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct AccessTokenGenerated {
+        pub token_id: u256,
+        pub user_id: u256,
+        pub content_id: felt252,
+        pub expiry: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct AccessTokenRevoked {
+        pub token_id: u256,
+        pub user_id: u256,
+        pub content_id: felt252,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct SubscriptionPlanCreated {
+        pub plan_id: u256,
+        pub content_id: felt252,
+        pub duration: u64,
+        pub price: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct SubscriptionUpgraded {
+        pub subscription_id: u256,
+        pub user_id: u256,
+        pub new_plan_id: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ContentLicenseSet {
+        pub content_id: felt252,
+        pub license_type: u8,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -786,9 +863,10 @@ pub mod ChainLib {
             let subscription_plan: Subscription = self.subscriptions.read(subscription_id);
 
             let current_time = get_block_timestamp();
-
+            
             // Default subscription period is 30 days (in seconds)
             let subscription_period: u64 = 30 * 24 * 60 * 60;
+            let end_date = current_time + subscription_period;
 
             let new_subscription = Subscription {
                 id: subscription_id,
@@ -801,6 +879,7 @@ pub mod ChainLib {
                 last_payment_date: current_time,
                 subscription_type: subscription_plan.subscription_type,
                 status: subscription_plan.status,
+                grace_period_end: end_date + GRACE_PERIOD
             };
 
             // Store the subscription
@@ -1481,6 +1560,7 @@ pub mod ChainLib {
                 last_payment_date: current_time,
                 subscription_type: subscription_type,
                 status: SubscriptionStatus::Active,
+                grace_period_end: GRACE_PERIOD,
             };
 
             self.subscriptions.write(user_id, new_subscription.clone());
@@ -1932,39 +2012,45 @@ pub mod ChainLib {
         }
 
         fn cancel_subscription(ref self: ContractState, user_id: u256) -> bool {
-            let caller = get_caller_address();
+    let caller = get_caller_address();
+    let user = self.users.read(user_id);
+    assert(user.id == user_id, 'User does not exist');
 
-            // Verify the user exists
-            let user = self.users.read(user_id);
-            assert(user.id == user_id, 'User does not exist');
+    let subscription = self.subscriptions.read(user_id);
+    let updated_subscription = Subscription {
+        id: subscription.id,
+        subscriber: subscription.subscriber,
+        plan_id: subscription.plan_id,
+        amount: subscription.amount,
+        start_date: subscription.start_date,
+        end_date: subscription.end_date,
+        is_active: false,
+        last_payment_date: subscription.last_payment_date,
+        subscription_type: subscription.subscription_type,
+        status: SubscriptionStatus::Cancelled,
+        grace_period_end: subscription.grace_period_end,
+    };
 
-            let subscription_plan: Subscription = self.subscriptions.read(user_id);
+    self.subscriptions.write(user_id, updated_subscription.clone());
+    self.subscription_record.entry(user_id).append().write(updated_subscription);
+    self.subscription_count.write(user_id, self.subscription_count.read(user_id) + 1);
 
-            // update user_id subscription to cancelled
-            let update_subscription = Subscription {
-                id: subscription_plan.id,
-                subscriber: subscription_plan.subscriber,
-                plan_id: subscription_plan.plan_id,
-                amount: subscription_plan.amount,
-                start_date: subscription_plan.start_date,
-                end_date: subscription_plan.end_date,
-                is_active: false,
-                last_payment_date: subscription_plan.last_payment_date,
-                subscription_type: subscription_plan.subscription_type,
-                status: SubscriptionStatus::Cancelled,
-            };
+    let plan = self.subscription_plans.read(subscription.plan_id);
+    let token_id = self.user_content_tokens.read((user_id, plan.content_id));
+    if token_id != 0 {
+        let mut token = self.access_tokens.read(token_id);
+        token.is_active = false;
+        self.access_tokens.write(token_id, token);
+        self.emit( AccessTokenRevoked {
+            token_id,
+            user_id,
+            content_id: plan.content_id,
+        });
+    }
 
-            // Store the subscription
-            self.subscriptions.write(user_id, update_subscription.clone());
-
-            self.subscription_record.entry(user_id).append().write(update_subscription);
-
-            let current_count = self.subscription_count.read(user_id);
-
-            self.emit(SubscriptionCancelled { user: caller, subscription_id: user_id });
-
-            true
-        }
+    self.emit(SubscriptionCancelled { user: caller, subscription_id: user_id });
+    true
+}
 
         fn renew_subscription(ref self: ContractState, user_id: u256) -> bool {
             let caller = get_caller_address();
@@ -1994,6 +2080,7 @@ pub mod ChainLib {
                 last_payment_date: subscription_plan.last_payment_date,
                 subscription_type: subscription_plan.subscription_type,
                 status: SubscriptionStatus::Active,
+                grace_period_end: GRACE_PERIOD
             };
 
             // Store the subscription
@@ -2067,6 +2154,245 @@ pub mod ChainLib {
             let total_content_sales = self.total_sales_for_content.read(content_id);
             total_content_sales
         }
+
+        fn create_subscription_plan(
+        ref self: ContractState, content_id: felt252, duration: u64, price: u256,
+    ) -> u256 {
+        let caller = get_caller_address();
+        assert(self.admin.read() == caller, 'Only admin can create plans');
+        assert!(content_id != 0, "Invalid content ID");
+        assert!(duration > 0, "Invalid duration");
+        assert!(price > 0, "Invalid price");
+
+        let plan_id = self.next_plan_id.read();
+        let new_plan = SubscriptionPlan {
+            plan_id,
+            content_id,
+            duration,
+            price,
+            is_active: true,
+        };
+
+        self.subscription_plans.write(plan_id, new_plan);
+        self.next_plan_id.write(plan_id + 1);
+
+        self.emit(SubscriptionPlanCreated {
+            plan_id,
+            content_id,
+            duration,
+            price,
+        });
+
+        plan_id
+    }
+    fn get_subscription_plan(ref self: ContractState, plan_id: u256) -> SubscriptionPlan {
+        let plan = self.subscription_plans.read(plan_id);
+        assert!(plan.plan_id == plan_id, "Plan does not exist");
+        plan
+    }
+
+    fn purchase_one_time_access(ref self: ContractState, user_id: u256, content_id: felt252) -> u256 {
+        let caller = get_caller_address();
+        let user = self.users.read(user_id);
+        assert!(user.id == user_id, "User does not exist");
+        assert!(caller == user.wallet_address, "Only user can purchase");
+
+        let license = self.content_licenses.read(content_id);
+        assert!(license.license_type == 0, "Content not available for one-time purchase");
+
+        let price = self.content_prices.read(content_id);
+        assert!(price > 0, "Content has no price");
+
+        self._process_payment(price);
+
+        let current_time = get_block_timestamp();
+        let token_id = self._generate_access_token(user_id, content_id, current_time + 30 * 24 * 60 * 60); // 30 days access
+
+        let purchase_id = self.next_purchase_id.read();
+        let purchase = Purchase {
+            id: purchase_id,
+            content_id,
+            buyer: caller,
+            price,
+            status: PurchaseStatus::Completed,
+            timestamp: current_time,
+            transaction_hash: 0,
+            timeout_expiry: current_time + self.purchase_timeout_duration.read(),
+        };
+
+        self.purchases.write(purchase_id, purchase);
+        self.next_purchase_id.write(purchase_id + 1);
+
+        self.emit( ContentPurchased {
+            purchase_id,
+            content_id,
+            buyer: caller,
+            price,
+            timestamp: current_time,
+        });
+
+        token_id
+    }
+
+    fn subscribe(ref self: ContractState, user_id: u256, plan_id: u256) -> u256 {
+        let caller = get_caller_address();
+        let user = self.users.read(user_id);
+        assert!(user.id == user_id, "User does not exist");
+        assert!(caller == user.wallet_address, "Only user can subscribe");
+
+        let plan = self.subscription_plans.read(plan_id);
+        assert!(plan.plan_id == plan_id, "Plan does not exist");
+        assert!(plan.is_active, "Plan not active");
+
+        self._process_payment(plan.price);
+
+        let current_time = get_block_timestamp();
+        let subscription_id = self.subscription_id.read();
+        let new_subscription = Subscription {
+            id: subscription_id,
+            subscriber: caller,
+            plan_id,
+            amount: plan.price,
+            start_date: current_time,
+            end_date: current_time + plan.duration,
+            is_active: true,
+            last_payment_date: current_time,
+            subscription_type: PlanType::MONTHLY,
+            status: SubscriptionStatus::Active,
+            grace_period_end: current_time + plan.duration + GRACE_PERIOD,
+        };
+
+        self.subscriptions.write(subscription_id, new_subscription.clone());
+        self.subscription_record.entry(subscription_id).append().write(new_subscription);
+        self.subscription_count.write(subscription_id, self.subscription_count.read(subscription_id) + 1);
+
+        let payment_id = self.payment_id.read();
+        let new_payment = Payment {
+            id: payment_id,
+            subscription_id,
+            amount: plan.price,
+            timestamp: current_time,
+            is_verified: true,
+            is_refunded: false,
+        };
+
+        self.payments.write(payment_id, new_payment);
+        let payment_count = self.subscription_payment_count.read(subscription_id);
+        self.subscription_payment_count.write(subscription_id, payment_count + 1);
+        self.subscription_id.write(subscription_id + 1);
+        let token_id = self._generate_access_token(user_id, plan.content_id, current_time + plan.duration);
+
+        self.emit(SubscriptionCreated {
+            user_id,
+            end_date: current_time + plan.duration,
+            amount: plan.price,
+        });
+
+        subscription_id
+    }
+
+    fn has_access(ref self: ContractState, user_id: u256, content_id: felt252) -> bool {
+        let token_id = self.user_content_tokens.read((user_id, content_id));
+        let token = self.access_tokens.read(token_id);
+        let current_time = get_block_timestamp();
+
+        token.is_active && token.user_id == user_id && token.content_id == content_id && token.expiry > current_time
+    }
+
+        fn set_content_license(ref self: ContractState, content_id: felt252, license_type: u8) -> bool {
+        let caller = get_caller_address();
+        assert!(self.admin.read() == caller, "Only admin can set license");
+        assert!(license_type <= 2, "Invalid license type");
+
+        let license =  ContentLicense {
+            content_id,
+            license_type,
+        };
+
+        self.content_licenses.write(content_id, license);
+        self.emit( ContentLicenseSet {
+            content_id,
+            license_type,
+        });
+
+        true
+    }
+
+    fn upgrade_subscription(ref self: ContractState, subscription_id: u256, new_plan_id: u256) -> bool {
+        let caller = get_caller_address();
+        let subscription = self.subscriptions.read(subscription_id);
+        assert!(subscription.id == subscription_id, "Subscription does not exist");
+        assert!(subscription.is_active, "Subscription not active");
+        assert!(caller == subscription.subscriber, "Not subscription owner");
+
+        let old_plan = self.subscription_plans.read(subscription.plan_id);
+        let new_plan = self.subscription_plans.read(new_plan_id);
+        assert!(new_plan.plan_id == new_plan_id, "New plan does not exist");
+        assert!(new_plan.is_active, "New plan not active");
+
+        // Get user_id from subscriber address
+        let user = self.user_by_address.read(subscription.subscriber);
+        assert!(user.id != 0, "User not found for subscriber");
+        let user_id = user.id;
+
+        let current_time = get_block_timestamp();
+        let remaining_time = if subscription.end_date > current_time {
+            subscription.end_date - current_time
+        } else {
+            0
+        };
+
+        let remaining_value = (old_plan.price * remaining_time.into()) / old_plan.duration.into();
+        let proration_credit = (remaining_value * PRORATION_PRECISION) / PRORATION_PRECISION;
+        let amount_due = if new_plan.price > proration_credit {
+            new_plan.price - proration_credit
+        } else {
+            0
+        };
+
+        if amount_due > 0 {
+            self._process_payment(amount_due);
+        }
+
+        let updated_subscription = Subscription {
+            id: subscription.id,
+            subscriber: subscription.subscriber,
+            plan_id: new_plan_id,
+            amount: new_plan.price,
+            start_date: subscription.start_date,
+            end_date: current_time + new_plan.duration,
+            is_active: true,
+            last_payment_date: current_time,
+            subscription_type: subscription.subscription_type,
+            status: SubscriptionStatus::Active,
+            grace_period_end: current_time + new_plan.duration + GRACE_PERIOD,
+        };
+
+        self.subscriptions.write(subscription_id, updated_subscription.clone());
+        self.subscription_record.entry(subscription_id).append().write(updated_subscription);
+        self.subscription_count.write(subscription_id, self.subscription_count.read(subscription_id) + 1);
+
+        let token_id = self.user_content_tokens.read((user_id, old_plan.content_id));
+        self.access_tokens.entry(token_id).write(AccessToken {
+            token_id: token_id,
+            user_id: user_id,
+            content_id: new_plan.content_id,
+            expiry: current_time + new_plan.duration,
+            is_active: true,
+        });
+
+        self.emit(SubscriptionUpgraded {
+            subscription_id,
+            user_id,
+            new_plan_id,
+        });
+
+        true
+    }
+
+        fn get_content_license(ref self: ContractState, content_id: felt252) -> ContentLicense {
+        self.content_licenses.read(content_id)
+    }
     }
 
     #[generate_trait]
@@ -2115,5 +2441,29 @@ pub mod ChainLib {
             self._check_token_balance(contract_address, amount);
             token.transfer(refund_address, amount);
         }
+
+        fn _generate_access_token(ref self: ContractState, user_id: u256, content_id: felt252, expiry: u64) -> u256 {
+        let token_id = self.next_token_id.read();
+        let new_token =  AccessToken {
+            token_id,
+            user_id,
+            content_id,
+            expiry,
+            is_active: true,
+        };
+
+        self.access_tokens.write(token_id, new_token);
+        self.user_content_tokens.write((user_id, content_id), token_id);
+        self.next_token_id.write(token_id + 1);
+
+        self.emit( AccessTokenGenerated {
+            token_id,
+            user_id,
+            content_id,
+            expiry,
+        });
+
+        token_id
+    }
     }
 }
