@@ -5,7 +5,8 @@ use crate::base::types::{
     VerificationRequirement, VerificationType,
 };
 use crate::chainlib::ChainLib::ChainLib::{
-    Category, ContentMetadata, ContentType, DelegationInfo, Payment, PlanType, Subscription, SubscriptionPlan, AccessToken, ContentLicense
+    AccessToken, Category, ContentLicense, ContentMetadata, ContentType, DelegationInfo, Payment,
+    PlanType, Subscription, SubscriptionPlan,
 };
 
 #[starknet::interface]
@@ -228,15 +229,19 @@ pub trait IChainLib<TContractState> {
     fn get_total_sales_by_creator(self: @TContractState, creator: ContractAddress) -> u256;
     fn get_total_sales_for_content(self: @TContractState, content_id: felt252) -> u256;
     // fn get_daily_sales(self: @TContractState, day: u64) -> u256;
-// fn get_unique_buyers_count(self: @TContractState) -> u256;
+    // fn get_unique_buyers_count(self: @TContractState) -> u256;
     fn create_subscription_plan(
         ref self: TContractState, content_id: felt252, duration: u64, price: u256,
-    ) -> u256; 
+    ) -> u256;
     fn get_subscription_plan(ref self: TContractState, plan_id: u256) -> SubscriptionPlan;
-    fn purchase_one_time_access(ref self: TContractState, user_id: u256, content_id: felt252) -> u256;
+    fn purchase_one_time_access(
+        ref self: TContractState, user_id: u256, content_id: felt252,
+    ) -> u256;
     fn subscribe(ref self: TContractState, user_id: u256, plan_id: u256) -> u256;
     fn has_access(ref self: TContractState, user_id: u256, content_id: felt252) -> bool;
     fn set_content_license(ref self: TContractState, content_id: felt252, license_type: u8) -> bool;
-    fn upgrade_subscription(ref self: TContractState, subscription_id: u256, new_plan_id: u256) -> bool;
+    fn upgrade_subscription(
+        ref self: TContractState, subscription_id: u256, new_plan_id: u256,
+    ) -> bool;
     fn get_content_license(ref self: TContractState, content_id: felt252) -> ContentLicense;
 }
