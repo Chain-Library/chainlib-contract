@@ -304,7 +304,6 @@ pub mod ChainLib {
         ReceiptGenerated: ReceiptGenerated,
         EmergencyPaused: EmergencyPaused,
         EmergencyUnpause: EmergencyUnpause,
-
         PayoutExecuted: PayoutExecuted,
         PayoutScheduleSet: PayoutScheduleSet,
         RefundRequested: RefundRequested,
@@ -2692,6 +2691,8 @@ pub mod ChainLib {
         /// @dev reads the is paused storage and throws an error if the is paused variable is true
         fn assert_not_paused(self: @ContractState) {
             assert(!self.is_paused.read(), 'Contract is paused');
+        }
+
         fn _get_refund_percentage(
             ref self: ContractState, refund_reason: RefundRequestReason,
         ) -> u256 {
