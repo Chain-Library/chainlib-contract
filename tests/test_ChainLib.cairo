@@ -7,6 +7,9 @@ use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType, PlanType, S
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use snforge_std::{
+    CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
+    start_cheat_block_timestamp, start_cheat_caller_address, stop_cheat_caller_address,
+
     CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_block_timestamp, cheat_caller_address,
     declare, start_cheat_block_timestamp, start_cheat_caller_address, stop_cheat_block_timestamp,
     stop_cheat_caller_address,
@@ -17,6 +20,7 @@ use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
 use crate::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 
+// const CURRENT_TIMESTAMP = get_block_timestamp();
 #[test]
 fn test_initial_data() {
     let (contract_address, admin_address, erc20_address) = setup();
@@ -822,74 +826,106 @@ fn test_update_nonexistent_purchase() {
     let _ = dispatcher.update_purchase_status(nonexistent_purchase_id, PurchaseStatus::Completed);
 }
 
+
 #[test]
-fn test_cancel_subscription() {
-    let (contract_address, _, erc20_address) = setup();
+fn test_create_subscription_plan() {
+    let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
 
+    // Set admin as caller
+    start_cheat_caller_address(contract_address, admin_address);
+
     // Test input values
-    let username: felt252 = 'John';
-    let role: Role = Role::READER;
-    let rank: Rank = Rank::BEGINNER;
-    let metadata: felt252 = 'john is a boy';
+    let content_id: felt252 = 'content1';
+    let duration: u64 = 30 * 24 * 60 * 60; // 30 days
+    let price: u256 = 1000;
 
-    // Call register
-    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+    // Create subscription plan
+    let plan_id = dispatcher.create_subscription_plan(content_id, duration, price);
 
-    dispatcher.create_subscription(account_id, 500, 1);
-    let subscription = dispatcher.get_user_subscription(account_id);
-    assert(subscription.id == 1, 'Subscription ID should be 1');
-    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
-    assert(subscription.status == SubscriptionStatus::Active, 'Plan type should be YEARLY');
-    let subscription_record = dispatcher.get_user_subscription_record(account_id);
-    assert(subscription_record.len() == 1, 'record should have length 1');
+    // Verify plan details
+    let plan = dispatcher.get_subscription_plan(plan_id);
+    assert(plan.plan_id == plan_id, 'Plan ID mismatch');
+    assert(plan.content_id == content_id, 'Content ID mismatch');
+    assert(plan.duration == duration, 'Duration mismatch');
+    assert(plan.price == price, 'Price mismatch');
+    assert(plan.is_active, 'Plan should be active');
 
-    dispatcher.cancel_subscription(account_id);
-    let subscription = dispatcher.get_user_subscription(account_id);
-    assert(subscription.id == 1, 'Subscription ID should be 1');
-    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
-    assert(subscription.status == SubscriptionStatus::Cancelled, 'Plan status should be cancelled');
-    let subscription_record = dispatcher.get_user_subscription_record(account_id);
-    assert(subscription_record.len() == 1, 'record should have length 1');
+    stop_cheat_caller_address(contract_address);
 }
 
 #[test]
-fn test_renew_subscription() {
-    let (contract_address, _, erc20_address) = setup();
+fn test_cancel_subscription_and_access_token() {
+    let (contract_address, admin_address, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
+    let user_address = contract_address_const::<'user'>();
 
-    // Test input values
+    // Register user
+    start_cheat_caller_address(contract_address, user_address);
     let username: felt252 = 'John';
     let role: Role = Role::READER;
     let rank: Rank = Rank::BEGINNER;
     let metadata: felt252 = 'john is a boy';
+    let user_id = dispatcher.register_user(username, role, rank, metadata);
+    stop_cheat_caller_address(contract_address);
 
-    // Call register
-    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+    // Set up token faucet and allowance
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
 
-    dispatcher.create_subscription(account_id, 500, 1);
-    let subscription = dispatcher.get_user_subscription(account_id);
-    assert(subscription.id == 1, 'Subscription ID should be 1');
-    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
-    assert(subscription.status == SubscriptionStatus::Active, 'Plan type should be YEARLY');
-    let subscription_record = dispatcher.get_user_subscription_record(account_id);
-    assert(subscription_record.len() == 1, 'record should have length 1');
+    // Create subscription plan
+    let content_id: felt252 = 'content1';
+    let duration: u64 = 30 * 24 * 60 * 60;
+    let price: u256 = 1000;
+    start_cheat_caller_address(contract_address, admin_address);
+    let plan_id = dispatcher.create_subscription_plan(content_id, duration, price);
+    stop_cheat_caller_address(contract_address);
 
-    dispatcher.cancel_subscription(account_id);
-    let subscription = dispatcher.get_user_subscription(account_id);
-    assert(subscription.id == 1, 'Subscription ID should be 1');
-    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
-    assert(subscription.status == SubscriptionStatus::Cancelled, 'Plan status should be cancelled');
-    let subscription_record = dispatcher.get_user_subscription_record(account_id);
-    assert(subscription_record.len() == 1, 'record should have length 1');
+    // Subscribe to plan
+    start_cheat_caller_address(contract_address, user_address);
+    let subscription_id = dispatcher.subscribe(user_id, plan_id);
+    stop_cheat_caller_address(contract_address);
 
-    dispatcher.renew_subscription(account_id);
-    let subscription = dispatcher.get_user_subscription(account_id);
-    assert(subscription.id == 1, 'Subscription ID should be 1');
-    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
-    assert(subscription.status == SubscriptionStatus::Active, 'Plan status should be Active');
-    let subscription_record = dispatcher.get_user_subscription_record(account_id);
-    assert(subscription_record.len() == 1, 'record should have length 1');
+    // Verify initial access
+    let has_access = dispatcher.has_access(user_id, content_id);
+    assert(has_access, 'User should have access');
+
+    // Cancel subscription
+    start_cheat_caller_address(contract_address, user_address);
+    let cancel_result = dispatcher.cancel_subscription(subscription_id);
+    assert(cancel_result, 'Cancellation failed');
+
+    // Verify subscription status
+    let subscription = dispatcher.get_user_subscription(subscription_id);
+    assert(subscription.status == SubscriptionStatus::Cancelled, 'Subscription not cancelled');
+
+    // Verify access token revoked
+    let has_access_after = dispatcher.has_access(user_id, content_id);
+    assert(!has_access_after, 'Access token should be revoked');
+
+    stop_cheat_caller_address(contract_address);
+}
+
+
+#[test]
+fn test_set_and_get_content_license() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Set admin as caller
+    start_cheat_caller_address(contract_address, admin_address);
+
+    // Set content license
+    let content_id: felt252 = 'content1';
+    let license_type: u8 = 1; // Subscription license
+    let set_result = dispatcher.set_content_license(content_id, license_type);
+    assert(set_result, 'Set license failed');
+
+    // Get content license
+    let license = dispatcher.get_content_license(content_id);
+    assert(license.content_id == content_id, 'Content ID mismatch');
+    assert(license.license_type == license_type, 'License type mismatch');
+
+    stop_cheat_caller_address(contract_address);
 }
 
 #[test]
