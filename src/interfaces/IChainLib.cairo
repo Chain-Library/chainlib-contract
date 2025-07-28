@@ -227,6 +227,9 @@ pub trait IChainLib<TContractState> {
     fn is_receipt_valid(self: @TContractState, receipt_id: u256) -> bool;
     fn get_total_sales_by_creator(self: @TContractState, creator: ContractAddress) -> u256;
     fn get_total_sales_for_content(self: @TContractState, content_id: felt252) -> u256;
+    fn emergency_pause(ref self: TContractState);
+    fn emergency_unpause(ref self: TContractState);
+    fn is_paused(self: @TContractState) -> bool;
     // fn get_daily_sales(self: @TContractState, day: u64) -> u256;
 // fn get_unique_buyers_count(self: @TContractState) -> u256;
 }
