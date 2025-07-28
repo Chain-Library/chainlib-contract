@@ -18,22 +18,11 @@ pub mod ChainLib {
         AccessRule, AccessType, Payout, PayoutSchedule, PayoutStatus, Permissions, Purchase,
         PurchaseStatus, Rank, Receipt, ReceiptStatus, Refund, RefundRequestReason, RefundStatus,
         Role, Status, TokenBoundAccount, User, VerificationRequirement, VerificationType,
-        permission_flags,
+        delegation_flags, permission_flags,
     };
     use crate::interfaces::IChainLib::IChainLib;
 
     // Define delegation-specific structures and constants
-
-    // New delegation flags - extending the existing permission_flags
-    pub mod delegation_flags {
-        // Using higher bits to avoid collision with existing permission flags
-        const DELEGATE_TRANSFER: u64 = 0x10000;
-        const DELEGATE_CONTENT: u64 = 0x20000;
-        const DELEGATE_ADMIN: u64 = 0x40000;
-        const DELEGATE_USER: u64 = 0x80000;
-        // Combined flag for full delegation capabilities
-        const FULL_DELEGATION: u64 = 0xF0000;
-    }
 
     #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
     pub struct DelegationInfo {
@@ -80,6 +69,36 @@ pub mod ChainLib {
         pub content_type: ContentType,
         pub creator: ContractAddress,
         pub category: Category,
+        pub last_updated: u64,
+        pub version: u64,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+    pub struct ContentUpdateHistory {
+        pub content_id: felt252,
+        pub version: u64,
+        pub updater: ContractAddress,
+        pub timestamp: u64,
+        pub update_type: ContentUpdateType,
+        pub previous_title: felt252,
+        pub previous_description: felt252,
+        pub previous_content_type: ContentType,
+        pub previous_category: Category,
+        pub new_title: felt252,
+        pub new_description: felt252,
+        pub new_content_type: ContentType,
+        pub new_category: Category,
+    }
+
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+    pub enum ContentUpdateType {
+        #[default]
+        Full,
+        Partial,
+        Title,
+        Description,
+        ContentType,
+        Category,
     }
 
     #[derive(Drop, Serde, starknet::Store, Clone)]
@@ -232,6 +251,12 @@ pub mod ChainLib {
         >, // map a creator's address to a Vec of his payouts
         user_refunds: Map<ContractAddress, Vec<Refund>>,
         refund_window: u64,
+        // Content Update Tracking
+        content_update_history: Map<
+            (felt252, u64), ContentUpdateHistory,
+        >, // Maps (content_id, version) to update history
+        content_version_count: Map<felt252, u64>, // Maps content_id to current version count
+        content_update_count: Map<felt252, u64> // Maps content_id to total update count
     }
 
     const REFUND_WINDOW: u64 = 86400;
@@ -307,6 +332,9 @@ pub mod ChainLib {
         PlatformFeeChanged: PlatformFeeChanged,
         RefundWindowChanged: RefundWindowChanged,
         RefundTimedOut: RefundTimedOut,
+        // Content Update Events
+        ContentUpdated: ContentUpdated,
+        ContentUpdateHistoryRecorded: ContentUpdateHistoryRecorded,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -543,6 +571,24 @@ pub mod ChainLib {
     #[derive(Drop, starknet::Event)]
     pub struct RefundWindowChanged {
         pub new_window: u64,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ContentUpdated {
+        pub content_id: felt252,
+        pub updater: ContractAddress,
+        pub version: u64,
+        pub update_type: ContentUpdateType,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ContentUpdateHistoryRecorded {
+        pub content_id: felt252,
+        pub version: u64,
+        pub updater: ContractAddress,
+        pub update_type: ContentUpdateType,
         pub timestamp: u64,
     }
 
@@ -856,6 +902,8 @@ pub mod ChainLib {
                 content_type: content_type,
                 creator: creator,
                 category: category,
+                last_updated: get_block_timestamp(),
+                version: 1,
             };
 
             self.content.write(content_id, content_metadata);
@@ -873,6 +921,238 @@ pub mod ChainLib {
 
             assert!(content_metadata.content_id == content_id, "Content does not exist");
             content_metadata
+        }
+
+        /// @notice Updates existing content with ownership verification
+        /// @dev Only content creators or authorized users can update content
+        /// @param content_id The unique identifier of the content to update
+        /// @param title The new title (0 to keep existing)
+        /// @param description The new description (0 to keep existing)
+        /// @param content_type The new content type (None to keep existing)
+        /// @param category The new category (None to keep existing)
+        /// @return bool Returns true if the update was successful
+        fn update_content(
+            ref self: ContractState,
+            content_id: felt252,
+            title: felt252,
+            description: felt252,
+            content_type: Option<ContentType>,
+            category: Option<Category>,
+        ) -> bool {
+            // Verify content exists
+            let mut content = self.content.read(content_id);
+            assert!(content.content_id == content_id, "Content does not exist");
+
+            // Ownership verification using comprehensive permission check
+            let caller = get_caller_address();
+            assert!(
+                self.can_update_content(content_id, caller),
+                "Only authorized users can update content",
+            );
+
+            // Store previous values for history tracking
+            let previous_title = content.title;
+            let previous_description = content.description;
+            let previous_content_type = content.content_type;
+            let previous_category = content.category;
+
+            // Determine update type
+            let mut update_type = ContentUpdateType::Full;
+            let mut fields_updated: u32 = 0;
+
+            // Update title if provided
+            if title != 0 {
+                content.title = title;
+                fields_updated += 1_u32;
+            }
+
+            // Update description if provided
+            if description != 0 {
+                content.description = description;
+                fields_updated += 1_u32;
+            }
+
+            // Update content type if provided
+            if content_type.is_some() {
+                content.content_type = content_type.unwrap();
+                fields_updated += 1_u32;
+            }
+
+            // Update category if provided
+            if category.is_some() {
+                content.category = category.unwrap();
+                fields_updated += 1_u32;
+            }
+
+            // Determine specific update type based on what was changed
+            if fields_updated == 1_u32 {
+                let content_type_some = content_type.is_some();
+                let category_some = category.is_some();
+                if title != 0 && description == 0 && !content_type_some && !category_some {
+                    update_type = ContentUpdateType::Title;
+                } else if title == 0 && description != 0 && !content_type_some && !category_some {
+                    update_type = ContentUpdateType::Description;
+                } else if title == 0 && description == 0 && content_type_some && !category_some {
+                    update_type = ContentUpdateType::ContentType;
+                } else if title == 0 && description == 0 && !content_type_some && category_some {
+                    update_type = ContentUpdateType::Category;
+                } else {
+                    update_type = ContentUpdateType::Partial;
+                }
+            } else if fields_updated > 1_u32 {
+                update_type = ContentUpdateType::Partial;
+            }
+
+            // Update version and timestamp
+            let new_version = content.version + 1;
+            content.version = new_version;
+            content.last_updated = get_block_timestamp();
+
+            // Store updated content
+            self.content.write(content_id, content);
+            self.creators_content.write(content.creator, content);
+
+            // Record update history
+            self
+                ._record_content_update_history(
+                    content_id,
+                    new_version,
+                    caller,
+                    update_type,
+                    previous_title,
+                    previous_description,
+                    previous_content_type,
+                    previous_category,
+                    content.title,
+                    content.description,
+                    content.content_type,
+                    content.category,
+                );
+
+            // Update version counter
+            self.content_version_count.write(content_id, new_version);
+            let current_update_count = self.content_update_count.read(content_id);
+            self.content_update_count.write(content_id, current_update_count + 1);
+
+            // Emit content updated event
+            self
+                .emit(
+                    ContentUpdated {
+                        content_id,
+                        updater: caller,
+                        version: new_version,
+                        update_type,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        /// @notice Updates only the title of existing content
+        /// @dev Only content creators or authorized users can update content
+        /// @param content_id The unique identifier of the content to update
+        /// @param title The new title
+        /// @return bool Returns true if the update was successful
+        fn update_content_title(
+            ref self: ContractState, content_id: felt252, title: felt252,
+        ) -> bool {
+            assert!(title != 0, "Title cannot be empty");
+            self.update_content(content_id, title, 0, Option::None, Option::None)
+        }
+
+        /// @notice Updates only the description of existing content
+        /// @dev Only content creators or authorized users can update content
+        /// @param content_id The unique identifier of the content to update
+        /// @param description The new description
+        /// @return bool Returns true if the update was successful
+        fn update_content_description(
+            ref self: ContractState, content_id: felt252, description: felt252,
+        ) -> bool {
+            assert!(description != 0, "Description cannot be empty");
+            self.update_content(content_id, 0, description, Option::None, Option::None)
+        }
+
+        /// @notice Updates only the content type of existing content
+        /// @dev Only content creators or authorized users can update content
+        /// @param content_id The unique identifier of the content to update
+        /// @param content_type The new content type
+        /// @return bool Returns true if the update was successful
+        fn update_content_type(
+            ref self: ContractState, content_id: felt252, content_type: ContentType,
+        ) -> bool {
+            self.update_content(content_id, 0, 0, Option::Some(content_type), Option::None)
+        }
+
+        /// @notice Updates only the category of existing content
+        /// @dev Only content creators or authorized users can update content
+        /// @param content_id The unique identifier of the content to update
+        /// @param category The new category
+        /// @return bool Returns true if the update was successful
+        fn update_content_category(
+            ref self: ContractState, content_id: felt252, category: Category,
+        ) -> bool {
+            self.update_content(content_id, 0, 0, Option::None, Option::Some(category))
+        }
+
+        /// @notice Gets the update history for a specific content
+        /// @param content_id The unique identifier of the content
+        /// @param version The specific version to retrieve (0 for latest)
+        /// @return ContentUpdateHistory The update history record
+        fn get_content_update_history(
+            self: @ContractState, content_id: felt252, version: u64,
+        ) -> ContentUpdateHistory {
+            if version == 0 {
+                let latest_version = self.content_version_count.read(content_id);
+                return self.content_update_history.read((content_id, latest_version));
+            }
+            self.content_update_history.read((content_id, version))
+        }
+
+        /// @notice Gets the current version of content
+        /// @param content_id The unique identifier of the content
+        /// @return u64 The current version number
+        fn get_content_version(self: @ContractState, content_id: felt252) -> u64 {
+            self.content_version_count.read(content_id)
+        }
+
+        /// @notice Gets the total number of updates for content
+        /// @param content_id The unique identifier of the content
+        /// @return u64 The total number of updates
+        fn get_content_update_count(self: @ContractState, content_id: felt252) -> u64 {
+            self.content_update_count.read(content_id)
+        }
+
+        /// @notice Checks if a user has permission to update content
+        /// @param content_id The unique identifier of the content
+        /// @param user The address of the user to check
+        /// @return bool Returns true if the user has update permission
+        fn can_update_content(
+            self: @ContractState, content_id: felt252, user: ContractAddress,
+        ) -> bool {
+            let content = self.content.read(content_id);
+
+            // Check if user is the content creator
+            if content.creator == user {
+                return true;
+            }
+
+            // Check if user is admin
+            if self.admin.read() == user {
+                return true;
+            }
+
+            // Check if user has content-specific permissions
+            if self.has_content_permission(content_id, user, permission_flags::WRITE) {
+                return true;
+            }
+
+            // Check if user has delegation for content updates
+            if self.is_delegated(content.creator, user, delegation_flags::DELEGATE_CONTENT) {
+                return true;
+            }
+
+            false
         }
 
 
@@ -2568,6 +2848,61 @@ pub mod ChainLib {
             let token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let balance = token.balance_of(caller);
             assert(balance >= amount, payment_errors::INSUFFICIENT_BALANCE);
+        }
+
+        /// @notice Internal function to record content update history
+        /// @param content_id The unique identifier of the content
+        /// @param version The version number
+        /// @param updater The address of the updater
+        /// @param update_type The type of update performed
+        /// @param previous_title The previous title
+        /// @param previous_description The previous description
+        /// @param previous_content_type The previous content type
+        /// @param previous_category The previous category
+        /// @param new_title The new title
+        /// @param new_description The new description
+        /// @param new_content_type The new content type
+        /// @param new_category The new category
+        fn _record_content_update_history(
+            ref self: ContractState,
+            content_id: felt252,
+            version: u64,
+            updater: ContractAddress,
+            update_type: ContentUpdateType,
+            previous_title: felt252,
+            previous_description: felt252,
+            previous_content_type: ContentType,
+            previous_category: Category,
+            new_title: felt252,
+            new_description: felt252,
+            new_content_type: ContentType,
+            new_category: Category,
+        ) {
+            let update_history = ContentUpdateHistory {
+                content_id,
+                version,
+                updater,
+                timestamp: get_block_timestamp(),
+                update_type,
+                previous_title,
+                previous_description,
+                previous_content_type,
+                previous_category,
+                new_title,
+                new_description,
+                new_content_type,
+                new_category,
+            };
+
+            self.content_update_history.write((content_id, version), update_history);
+
+            // Emit history recorded event
+            self
+                .emit(
+                    ContentUpdateHistoryRecorded {
+                        content_id, version, updater, update_type, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         fn _single_payout(

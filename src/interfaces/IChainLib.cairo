@@ -5,7 +5,8 @@ use crate::base::types::{
     Role, TokenBoundAccount, User, VerificationRequirement, VerificationType,
 };
 use crate::chainlib::ChainLib::ChainLib::{
-    Category, ContentMetadata, ContentType, DelegationInfo, Payment, PlanType, Subscription,
+    Category, ContentMetadata, ContentType, ContentUpdateHistory, ContentUpdateType, DelegationInfo,
+    Payment, PlanType, Subscription,
 };
 
 #[starknet::interface]
@@ -74,6 +75,42 @@ pub trait IChainLib<TContractState> {
         category: Category,
     ) -> felt252;
     fn get_content(ref self: TContractState, content_id: felt252) -> ContentMetadata;
+
+    // Content Update Functions
+    fn update_content(
+        ref self: TContractState,
+        content_id: felt252,
+        title: felt252,
+        description: felt252,
+        content_type: Option<ContentType>,
+        category: Option<Category>,
+    ) -> bool;
+
+    fn update_content_title(ref self: TContractState, content_id: felt252, title: felt252) -> bool;
+
+    fn update_content_description(
+        ref self: TContractState, content_id: felt252, description: felt252,
+    ) -> bool;
+
+    fn update_content_type(
+        ref self: TContractState, content_id: felt252, content_type: ContentType,
+    ) -> bool;
+
+    fn update_content_category(
+        ref self: TContractState, content_id: felt252, category: Category,
+    ) -> bool;
+
+    fn get_content_update_history(
+        self: @TContractState, content_id: felt252, version: u64,
+    ) -> ContentUpdateHistory;
+
+    fn get_content_version(self: @TContractState, content_id: felt252) -> u64;
+
+    fn get_content_update_count(self: @TContractState, content_id: felt252) -> u64;
+
+    fn can_update_content(
+        self: @TContractState, content_id: felt252, user: ContractAddress,
+    ) -> bool;
 
 
     fn set_content_price(ref self: TContractState, content_id: felt252, price: u256);
