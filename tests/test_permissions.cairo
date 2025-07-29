@@ -7,6 +7,7 @@ mod permission_tests {
     };
     use snforge_std::{
         CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
+        start_cheat_caller_address, stop_cheat_caller_address,
     };
     use starknet::class_hash::ClassHash;
     use starknet::contract_address::contract_address_const;
@@ -31,6 +32,20 @@ mod permission_tests {
 
         // Verify the account has full permissions for the owner
         assert(token_account.owner_permissions.value == permission_flags::FULL, 'wrong perm');
+    }
+
+    #[test]
+    #[should_panic(expected: 'Contract is paused')]
+    fn test_token_account_owner_should_panic_if_contract_paused() {
+        let (contract_address, admin_address, erc20_address) = setup();
+        let dispatcher = IChainLibDispatcher { contract_address };
+        let user_name: felt252 = 'Alice';
+        let init_param1: felt252 = 'alice@mail.com';
+        let init_param2: felt252 = 'alice profile';
+        start_cheat_caller_address(contract_address, admin_address);
+        dispatcher.emergency_pause();
+        stop_cheat_caller_address(contract_address);
+        dispatcher.create_token_account(user_name, init_param1, init_param2);
     }
 
     #[test]
@@ -88,6 +103,88 @@ mod permission_tests {
         let operator_permissions_after = dispatcher.get_permissions(account_id, operator_address);
         assert(operator_permissions_after.value == permission_flags::NONE, 'not NONE');
     }
+
+
+    #[test]
+    #[should_panic(expected: 'Contract is paused')]
+    fn test_set_operator_permissions_should_panic_if_contract_paused() {
+        let (contract_address, admin_address, erc20_address) = setup();
+        let dispatcher = IChainLibDispatcher { contract_address };
+
+        // Test input values
+        let user_name: felt252 = 'Bob';
+        let init_param1: felt252 = 'bob@mail.com';
+        let init_param2: felt252 = 'bob profile';
+
+        // Create account
+        let account_id = dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+        // Create operator address
+        let operator_address: ContractAddress = contract_address_const::<'operator'>();
+
+        // Set READ and EXECUTE permissions for the operator
+        let permissions = Permissions { value: permission_flags::READ | permission_flags::EXECUTE };
+
+        start_cheat_caller_address(contract_address, admin_address);
+        dispatcher.emergency_pause();
+        stop_cheat_caller_address(contract_address);
+
+        // Grant permissions to the operator
+        let result = dispatcher.set_operator_permissions(account_id, operator_address, permissions);
+    }
+
+
+    #[test]
+    #[should_panic(expected: 'Contract is paused')]
+    fn test_revoke_operator_should_panic_if_contract_paused() {
+        let (contract_address, admin_address, erc20_address) = setup();
+        let dispatcher = IChainLibDispatcher { contract_address };
+
+        // Test input values
+        let user_name: felt252 = 'Bob';
+        let init_param1: felt252 = 'bob@mail.com';
+        let init_param2: felt252 = 'bob profile';
+
+        // Create account
+        let account_id = dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+        // Create operator address
+        let operator_address: ContractAddress = contract_address_const::<'operator'>();
+
+        // Set READ and EXECUTE permissions for the operator
+        let permissions = Permissions { value: permission_flags::READ | permission_flags::EXECUTE };
+
+        // Grant permissions to the operator
+        let result = dispatcher.set_operator_permissions(account_id, operator_address, permissions);
+        assert(result, 'set perm failed');
+
+        // Check operator permissions
+        let operator_permissions = dispatcher.get_permissions(account_id, operator_address);
+        assert(
+            operator_permissions.value == (permission_flags::READ | permission_flags::EXECUTE),
+            'wrong perm',
+        );
+
+        // Verify the operator has specific permissions
+        let has_read = dispatcher
+            .has_permission(account_id, operator_address, permission_flags::READ);
+        let has_execute = dispatcher
+            .has_permission(account_id, operator_address, permission_flags::EXECUTE);
+        let has_write = dispatcher
+            .has_permission(account_id, operator_address, permission_flags::WRITE);
+
+        assert(has_read, 'no READ perm');
+        assert(has_execute, 'no EXEC perm');
+        assert(!has_write, 'has WRITE perm');
+
+        start_cheat_caller_address(contract_address, admin_address);
+        dispatcher.emergency_pause();
+        stop_cheat_caller_address(contract_address);
+
+        // Revoke operator permissions
+        let revoke_result = dispatcher.revoke_operator(account_id, operator_address);
+    }
+
 
     #[test]
     fn test_manage_operators_permission() {
@@ -151,6 +248,36 @@ mod permission_tests {
         let has_write = (updated_account.owner_permissions.value
             & permission_flags::WRITE) == permission_flags::WRITE;
         assert(!has_write, 'still has WRITE');
+    }
+
+
+    #[test]
+    #[should_panic(expected: 'Contract is paused')]
+    fn test_modify_account_permissions_should_panic_if_contract_paused() {
+        let (contract_address, admin_address, erc20_address) = setup();
+        let dispatcher = IChainLibDispatcher { contract_address };
+
+        // Create token account
+        let user_name: felt252 = 'Charlie';
+        let init_param1: felt252 = 'charlie@mail.com';
+        let init_param2: felt252 = 'charlie profile';
+
+        let account_id = dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+        // Get initial permissions
+        let token_account = dispatcher.get_token_bound_account(account_id);
+        assert(token_account.owner_permissions.value == permission_flags::FULL, 'wrong init perm');
+
+        // Modify permissions - remove WRITE permission
+        let modified_permissions = Permissions {
+            value: permission_flags::FULL & ~permission_flags::WRITE,
+        };
+
+        start_cheat_caller_address(contract_address, admin_address);
+        dispatcher.emergency_pause();
+        stop_cheat_caller_address(contract_address);
+
+        dispatcher.modify_account_permissions(account_id, modified_permissions);
     }
 
     #[test]

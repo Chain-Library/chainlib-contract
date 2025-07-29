@@ -4,7 +4,8 @@ use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentMetadata, Content
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpy, EventSpyAssertionsTrait,
-    cheat_caller_address, declare, spy_events,
+    cheat_caller_address, declare, spy_events, start_cheat_caller_address,
+    stop_cheat_caller_address,
 };
 use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;
@@ -72,6 +73,43 @@ fn test_register_content() {
                 ),
             ],
         )
+}
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_register_content_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    let title: felt252 = 'My Content';
+    let description: felt252 = 'This is a test content';
+    let content_type: ContentType = ContentType::Text;
+    let category: Category = Category::Education;
+    let caller_address: ContractAddress = contract_address_const::<'creator'>();
+
+    // Register a user with WRITER role
+    let username: felt252 = 'John';
+    let role: Role = Role::WRITER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Set caller address for user registration
+    cheat_caller_address(contract_address, caller_address, CheatSpan::Indefinite);
+
+    // Call register_user
+    let user_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    // Verify user registration
+    let user = dispatcher.retrieve_user_profile(user_id);
+    assert(user.role == Role::WRITER, 'User role not WRITER');
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+    // Register content
+    dispatcher.register_content(title, description, content_type, category);
 }
 
 #[test]

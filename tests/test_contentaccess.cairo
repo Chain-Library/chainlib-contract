@@ -13,6 +13,7 @@ mod permission_tests {
     use core::option::OptionTrait;
     use snforge_std::{
         CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
+        start_cheat_caller_address, stop_cheat_caller_address,
     };
     use starknet::class_hash::ClassHash;
     use starknet::contract_address::contract_address_const;
@@ -72,6 +73,61 @@ mod permission_tests {
         assert(updated_rules.len() == 3, 'Rule not added');
         assert(*updated_rules[2].access_type == AccessType::Admin, 'New rule incorrect');
     }
+
+
+    #[test]
+    #[should_panic(expected: 'Contract is paused')]
+    fn test_content_access_rules_should_panic_if_contract_paused() {
+        let (contract_address, _, _) = setup();
+        let dispatcher = IChainLibDispatcher { contract_address };
+        let content_id = 123;
+        let user = contract_address_const::<'user'>();
+        let admin = contract_address_const::<'admin'>();
+
+        // Test set_content_access_rules
+        let mut rules = ArrayTrait::new();
+        rules
+            .append(
+                AccessRule {
+                    access_type: AccessType::View,
+                    permission_level: 1,
+                    conditions: Option::None,
+                    expires_at: 0,
+                },
+            );
+        rules
+            .append(
+                AccessRule {
+                    access_type: AccessType::Edit,
+                    permission_level: 2,
+                    conditions: Option::None,
+                    expires_at: 0,
+                },
+            );
+
+        // Only admin or creator can set rules
+        cheat_caller_address(contract_address, admin, CheatSpan::Indefinite);
+        assert!(dispatcher.set_content_access_rules(content_id, rules), "Failed to set rules");
+
+        // Test get_content_access_rules
+        let retrieved_rules = dispatcher.get_content_access_rules(content_id);
+        assert(retrieved_rules.len() == 2, 'Incorrect number of rules');
+        assert(*retrieved_rules[0].access_type == AccessType::View, 'First rule incorrect');
+        assert(*retrieved_rules[1].access_type == AccessType::Edit, 'Second rule incorrect');
+
+        // Test add_content_access_rule
+        let new_rule = AccessRule {
+            access_type: AccessType::Admin,
+            permission_level: 3,
+            conditions: Option::None,
+            expires_at: 0,
+        };
+        start_cheat_caller_address(contract_address, admin);
+        dispatcher.emergency_pause();
+        dispatcher.add_content_access_rule(content_id, new_rule);
+        stop_cheat_caller_address(contract_address);
+    }
+
 
     #[test]
     fn test_verification_workflow() {
@@ -138,6 +194,36 @@ mod permission_tests {
             !dispatcher.check_verification_requirements(user, content_id),
             'Verification check should fail',
         );
+    }
+
+
+    #[test]
+    #[should_panic(expected: 'Contract is paused')]
+    fn test_verification_should_panic_if_contract_paused() {
+        let (contract_address, admin_address, _) = setup();
+        let dispatcher = IChainLibDispatcher { contract_address };
+        let content_id = 456;
+        let user = contract_address_const::<0x03>();
+
+        // Test set_verification_requirements
+        let mut requirements = ArrayTrait::new();
+        requirements
+            .append(
+                VerificationRequirement {
+                    requirement_type: VerificationType::Identity, valid_until: 0, threshold: 1,
+                },
+            );
+        requirements
+            .append(
+                VerificationRequirement {
+                    requirement_type: VerificationType::Payment, valid_until: 0, threshold: 1,
+                },
+            );
+
+        cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+        dispatcher.emergency_pause();
+
+        dispatcher.set_verification_requirements(content_id, requirements);
     }
 
     #[test]

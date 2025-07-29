@@ -224,6 +224,8 @@ pub mod ChainLib {
         creator_sales: Map<ContractAddress, u256>,
         total_sales_for_content: Map<felt252, u256>,
         token_address: ContractAddress,
+        reentrancy_guard: bool,
+        is_paused: bool,
         platform_fee: u256, //basis points; 1000 = 10%
         platform_fee_recipient: ContractAddress,
         payout_schedule: PayoutSchedule,
@@ -255,6 +257,8 @@ pub mod ChainLib {
         self.next_purchase_id.write(1_u256);
         self.next_content_id.write(0_felt252);
         self.purchase_timeout_duration.write(3600);
+        self.reentrancy_guard.write(false);
+        self.is_paused.write(false);
         self.platform_fee_recipient.write(get_contract_address());
         // self.platform_fee.write(PLATFORM_FEE);
         self.platform_fee.write(platform_fee);
@@ -298,6 +302,8 @@ pub mod ChainLib {
         SubscriptionCancelled: SubscriptionCancelled,
         SubscriptionRenewed: SubscriptionRenewed,
         ReceiptGenerated: ReceiptGenerated,
+        EmergencyPaused: EmergencyPaused,
+        EmergencyUnpause: EmergencyUnpause,
         PayoutExecuted: PayoutExecuted,
         PayoutScheduleSet: PayoutScheduleSet,
         RefundRequested: RefundRequested,
@@ -312,6 +318,19 @@ pub mod ChainLib {
     #[derive(Drop, starknet::Event)]
     pub struct TokenBoundAccountCreated {
         pub id: u256,
+    }
+
+
+    #[derive(Drop, starknet::Event)]
+    pub struct EmergencyPaused {
+        pub paused_by: ContractAddress,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct EmergencyUnpause {
+        pub unpaused_by: ContractAddress,
+        pub timestamp: u64,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -551,6 +570,7 @@ pub mod ChainLib {
         fn create_token_account(
             ref self: ContractState, user_name: felt252, init_param1: felt252, init_param2: felt252,
         ) -> u256 {
+            self.assert_not_paused();
             // Ensure that the username is not empty.
             assert!(user_name != 0, "User name cannot be empty");
 
@@ -616,6 +636,7 @@ pub mod ChainLib {
         fn register_user(
             ref self: ContractState, username: felt252, role: Role, rank: Rank, metadata: felt252,
         ) -> u256 {
+            self.assert_not_paused();
             // Ensure that the username is not empty.
             assert!(username != 0, "User name cannot be empty");
 
@@ -659,6 +680,7 @@ pub mod ChainLib {
             rank: Rank,
             metadata: felt252,
         ) {
+            self.assert_not_paused();
             assert!(username != 0, "User name cannot be empty");
             let zero: ContractAddress = contract_address_const::<0>();
             assert!(wallet_address != zero, "Address cannot be zero");
@@ -687,6 +709,7 @@ pub mod ChainLib {
         }
 
         fn deactivate_profile(ref self: ContractState, user_id: u256) -> bool {
+            self.assert_not_paused();
             let mut user = self.users.read(user_id);
             // Ensure that the caller is the user or has permission to update.
             let caller = get_caller_address();
@@ -702,6 +725,7 @@ pub mod ChainLib {
         }
 
         fn verify_user(ref self: ContractState, user_id: u256) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can verify users');
@@ -753,6 +777,7 @@ pub mod ChainLib {
             operator: ContractAddress,
             permissions: Permissions,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             let account = self.accounts.read(account_id);
 
@@ -776,6 +801,7 @@ pub mod ChainLib {
         fn revoke_operator(
             ref self: ContractState, account_id: u256, operator: ContractAddress,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             let account = self.accounts.read(account_id);
 
@@ -807,6 +833,7 @@ pub mod ChainLib {
         fn modify_account_permissions(
             ref self: ContractState, account_id: u256, permissions: Permissions,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             let mut account = self.accounts.read(account_id);
 
@@ -839,6 +866,7 @@ pub mod ChainLib {
             content_type: ContentType,
             category: Category,
         ) -> felt252 {
+            self.assert_not_paused();
             assert!(title != 0, "Title cannot be empty");
             assert!(description != 0, "Description cannot be empty");
 
@@ -883,6 +911,8 @@ pub mod ChainLib {
         fn process_initial_payment(
             ref self: ContractState, amount: u256, subscriber: ContractAddress,
         ) -> bool {
+            self.assert_not_paused();
+            self.start_reentrancy_guard();
             // Get the caller's address - this is who is initiating the subscription
             let caller = get_caller_address();
 
@@ -971,6 +1001,7 @@ pub mod ChainLib {
                     },
                 );
 
+            self.end_reentrancy_guard();
             true
         }
 
@@ -978,6 +1009,8 @@ pub mod ChainLib {
         /// @param subscription_id The unique identifier of the subscription
         /// @return bool Returns true if the recurring payment is processed successfully
         fn process_recurring_payment(ref self: ContractState, subscription_id: u256) -> bool {
+            self.assert_not_paused();
+            self.start_reentrancy_guard();
             // Get the subscription
             let mut subscription = self.subscriptions.read(subscription_id);
 
@@ -1045,6 +1078,8 @@ pub mod ChainLib {
                     },
                 );
 
+            self.end_reentrancy_guard();
+
             true
         }
 
@@ -1052,6 +1087,7 @@ pub mod ChainLib {
         /// @param payment_id The unique identifier of the payment to verify
         /// @return bool Returns true if the payment is verified successfully
         fn verify_payment(ref self: ContractState, payment_id: u256) -> bool {
+            self.assert_not_paused();
             // Only admin should be able to verify payments
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Only admin can verify payments');
@@ -1087,6 +1123,8 @@ pub mod ChainLib {
         /// @param subscription_id The unique identifier of the subscription to refund
         /// @return bool Returns true if the refund is processed successfully
         fn process_refund(ref self: ContractState, subscription_id: u256) -> bool {
+            self.assert_not_paused();
+            self.start_reentrancy_guard();
             // Only admin should be able to process refunds
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Only admin can process refunds');
@@ -1135,6 +1173,7 @@ pub mod ChainLib {
                     },
                 );
 
+            self.end_reentrancy_guard();
             true
         }
 
@@ -1144,6 +1183,7 @@ pub mod ChainLib {
             content_id: felt252,
             requirements: Array<VerificationRequirement>,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             let content = self.content.read(content_id);
 
@@ -1196,6 +1236,7 @@ pub mod ChainLib {
         fn set_content_access_rules(
             ref self: ContractState, content_id: felt252, rules: Array<AccessRule>,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             let content = self.content.read(content_id);
 
@@ -1249,6 +1290,7 @@ pub mod ChainLib {
         fn add_content_access_rule(
             ref self: ContractState, content_id: felt252, rule: AccessRule,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             let content = self.content.read(content_id);
 
@@ -1302,6 +1344,7 @@ pub mod ChainLib {
             verification_type: VerificationType,
             is_verified: bool,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Only admin can verify users');
 
@@ -1339,6 +1382,7 @@ pub mod ChainLib {
             user: ContractAddress,
             permissions: Permissions,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             let content = self.content.read(content_id);
 
@@ -1380,6 +1424,7 @@ pub mod ChainLib {
             expiration: u64,
             max_actions: u64,
         ) -> bool {
+            self.assert_not_paused();
             // Ensure the delegate address is valid
             let x: ContractAddress = 0.try_into().unwrap();
             assert(delegate != x, 'Invalid delegate address');
@@ -1440,6 +1485,7 @@ pub mod ChainLib {
         fn revoke_delegation(
             ref self: ContractState, delegate: ContractAddress, permissions: u64,
         ) -> bool {
+            self.assert_not_paused();
             // Get the delegator (caller)
             let delegator = get_caller_address();
 
@@ -1494,6 +1540,7 @@ pub mod ChainLib {
         fn use_delegation(
             ref self: ContractState, delegator: ContractAddress, permission: u64,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
 
             // Check if the caller has the required permission via delegation
@@ -1549,6 +1596,7 @@ pub mod ChainLib {
         fn create_subscription(
             ref self: ContractState, user_id: u256, amount: u256, plan_type: u32,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
 
             // Verify the user exists
@@ -1613,6 +1661,7 @@ pub mod ChainLib {
         fn grant_premium_access(
             ref self: ContractState, user_id: u256, content_id: felt252,
         ) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             let content = self.content.read(content_id);
 
@@ -1675,6 +1724,7 @@ pub mod ChainLib {
         }
 
         fn revoke_access(ref self: ContractState, user_id: u256, content_id: felt252) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
             let content = self.content.read(content_id);
 
@@ -1718,6 +1768,7 @@ pub mod ChainLib {
         }
 
         fn set_cache_ttl(ref self: ContractState, ttl_seconds: u64) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
 
             // Only admin can set cache TTL
@@ -1728,6 +1779,7 @@ pub mod ChainLib {
         }
 
         fn verify_access(ref self: ContractState, user_id: u256, content_id: felt252) -> bool {
+            self.assert_not_paused();
             let current_time = get_block_timestamp();
             let cache_key = (user_id, content_id);
 
@@ -1821,6 +1873,7 @@ pub mod ChainLib {
         }
 
         fn initialize_access_control(ref self: ContractState, default_cache_ttl: u64) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
 
             // Only admin can initialize access control
@@ -1832,6 +1885,7 @@ pub mod ChainLib {
         }
 
         fn clear_access_cache(ref self: ContractState, user_id: u256, content_id: felt252) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
 
             // Only admin can clear cache entries
@@ -1853,6 +1907,7 @@ pub mod ChainLib {
         /// @param content_id The unique identifier of the content.
         /// @param price The price to set for the content.
         fn set_content_price(ref self: ContractState, content_id: felt252, price: u256) {
+            self.assert_not_paused();
             // Only admin can set content prices
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Admin only');
@@ -1870,6 +1925,9 @@ pub mod ChainLib {
         fn purchase_content(
             ref self: ContractState, content_id: felt252, transaction_hash: felt252,
         ) -> u256 {
+            self.assert_not_paused();
+            self.start_reentrancy_guard();
+
             // assert!(content_id != 0, "Content ID cannot be empty");
             // I commented the above line out because in other parts of the project, it is
             // explicitly stated that first content id should be 0
@@ -1902,6 +1960,8 @@ pub mod ChainLib {
 
             let timestamp = get_block_timestamp();
             self.emit(ContentPurchased { purchase_id, content_id, buyer, price, timestamp });
+
+            self.end_reentrancy_guard();
 
             purchase_id
         }
@@ -1975,6 +2035,7 @@ pub mod ChainLib {
         /// @param purchase_id The unique identifier of the purchase to verify.
         /// @return bool True if the purchase is valid and completed, false otherwise.
         fn verify_purchase(ref self: ContractState, purchase_id: u256) -> bool {
+            self.assert_not_paused();
             // Get the purchase details
             let purchase = self.purchases.read(purchase_id);
             // assert()
@@ -2060,6 +2121,7 @@ pub mod ChainLib {
         fn update_purchase_status(
             ref self: ContractState, purchase_id: u256, status: PurchaseStatus,
         ) -> bool {
+            self.assert_not_paused();
             // Only admin can update purchase status
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Only admin can update status');
@@ -2093,6 +2155,7 @@ pub mod ChainLib {
         }
 
         fn cancel_subscription(ref self: ContractState, user_id: u256) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
 
             // Verify the user exists
@@ -2128,6 +2191,7 @@ pub mod ChainLib {
         }
 
         fn renew_subscription(ref self: ContractState, user_id: u256) -> bool {
+            self.assert_not_paused();
             let caller = get_caller_address();
 
             // Verify the user exists
@@ -2183,6 +2247,7 @@ pub mod ChainLib {
             price: u256,
             transaction_hash: felt252,
         ) -> u256 {
+            self.assert_not_paused();
             let receipt_id = self.receipt_counter.read() + 1;
             let issued_at = starknet::get_block_timestamp();
 
@@ -2203,6 +2268,25 @@ pub mod ChainLib {
             self.emit(ReceiptGenerated { receipt_id });
 
             receipt_id
+        }
+
+        fn emergency_pause(ref self: ContractState) {
+            let caller = get_caller_address();
+            assert((self.admin.read() == caller), 'Only admin can pause');
+
+            self.is_paused.write(true);
+            self.emit(EmergencyPaused { paused_by: caller, timestamp: get_block_timestamp() });
+        }
+        fn emergency_unpause(ref self: ContractState) {
+            let caller = get_caller_address();
+            assert((self.admin.read() == caller), 'Only admin can unpause');
+
+            self.is_paused.write(false);
+            self.emit(EmergencyUnpause { unpaused_by: caller, timestamp: get_block_timestamp() });
+        }
+
+        fn is_paused(self: @ContractState) -> bool {
+            self.is_paused.read()
         }
 
         fn get_receipt(self: @ContractState, receipt_id: u256) -> Receipt {
@@ -2230,6 +2314,7 @@ pub mod ChainLib {
         }
 
         fn batch_payout_creators(ref self: ContractState) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Only admin can execute payout');
 
@@ -2347,6 +2432,7 @@ pub mod ChainLib {
         fn approve_refund(
             ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>,
         ) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can approve refunds');
@@ -2415,6 +2501,7 @@ pub mod ChainLib {
         }
 
         fn decline_refund(ref self: ContractState, refund_id: u64, user_id: u256) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can approve refunds');
@@ -2442,6 +2529,7 @@ pub mod ChainLib {
         }
 
         fn refund_user(ref self: ContractState, refund_id: u64, user_id: u256) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can approve refunds');
@@ -2511,6 +2599,7 @@ pub mod ChainLib {
         }
 
         fn set_platform_fee(ref self: ContractState, platform_fee: u256) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can execute refunds');
@@ -2522,6 +2611,7 @@ pub mod ChainLib {
         }
 
         fn set_refund_window(ref self: ContractState, window: u64) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can execute refunds');
@@ -2538,6 +2628,7 @@ pub mod ChainLib {
         /// @param amount The amount of tokens to transfer.
         /// @require The caller must have sufficient token allowance and balance.
         fn _process_payment(ref self: ContractState, amount: u256) {
+            self.assert_not_paused();
             let strk_token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let caller = get_caller_address();
             let contract_address = get_contract_address();
@@ -2582,10 +2673,31 @@ pub mod ChainLib {
         }
 
         fn _process_refund(ref self: ContractState, amount: u256, refund_address: ContractAddress) {
+            self.assert_not_paused();
             let token = IERC20Dispatcher { contract_address: self.token_address.read() };
             let contract_address = get_contract_address();
             self._check_token_balance(contract_address, amount);
             token.transfer(refund_address, amount);
+        }
+
+        /// @notice starts the re entrancy guard
+        /// @dev asserts the reentrancy guard has not been started already
+        fn start_reentrancy_guard(ref self: ContractState) {
+            assert(!self.reentrancy_guard.read(), 'Reentrant call');
+
+            self.reentrancy_guard.write(true);
+        }
+
+        /// @notice ends the re entrancy guard
+        /// @dev writes false to the reentrancy guard
+        fn end_reentrancy_guard(ref self: ContractState) {
+            self.reentrancy_guard.write(false);
+        }
+
+        /// @notice asserts that the function is not paused
+        /// @dev reads the is paused storage and throws an error if the is paused variable is true
+        fn assert_not_paused(self: @ContractState) {
+            assert(!self.is_paused.read(), 'Contract is paused');
         }
 
         fn _get_refund_percentage(

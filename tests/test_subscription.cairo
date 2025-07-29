@@ -320,6 +320,58 @@ fn test_process_recurring_payment() {
     assert(recurring_result == true, 'Recurring payment failed');
 }
 
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_process_recurring_payment_should_panic_if_contract_paused() {
+    // Setup the contract
+    let (contract_address, admin_address, erc20_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
+
+    // Set the caller to the subscriber for the entire test
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+
+    // Verify the payment was processed successfully
+    assert(result == true, 'Initial payment failed');
+
+    // Now process a recurring payment
+    // Since this is the first subscription, its ID is 0
+    let subscription_id: u256 = 0;
+
+    // Advance the block timestamp to simulate time passing (1 day in seconds)
+    let one_day_in_seconds: u64 = 24 * 60 * 60;
+    let initial_timestamp = get_block_timestamp();
+    let new_timestamp = initial_timestamp + one_day_in_seconds;
+    snforge_std::cheat_block_timestamp(contract_address, new_timestamp, CheatSpan::Indefinite);
+
+    start_cheat_caller_address(contract_address, admin_address);
+    subscription_dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    // Process the recurring payment
+    subscription_dispatcher.process_recurring_payment(subscription_id);
+}
+
 #[test]
 #[should_panic(expected: 'Insufficient token allowance')]
 fn test_process_recurring_payment_should_panic_if_insufficient_allowance() {
@@ -568,6 +620,49 @@ fn test_verify_payment_admin_only() {
     assert(false, 'Should have panicked');
 }
 
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_verify_payment_should_panic_if_contract_paused() {
+    // Setup the contract
+    let (contract_address, admin_address, erc20_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    // Set the caller to the subscriber for creating a subscription
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+
+    // Verify the payment was processed successfully
+    assert(result == true, 'Initial payment failed');
+
+    // The payment ID for the initial payment should be 0
+    let payment_id: u256 = 0;
+
+    start_cheat_caller_address(contract_address, admin_address);
+    subscription_dispatcher.emergency_pause();
+
+    subscription_dispatcher.verify_payment(payment_id);
+
+    stop_cheat_caller_address(contract_address);
+}
+
 // Test that the function panics when payment is not found
 #[test]
 #[should_panic(expected: 'Payment not found')]
@@ -735,6 +830,48 @@ fn test_process_refund_admin_only() {
     assert(false, 'Should have panicked');
 }
 
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_process_refund_should_panic_if_contract_paused() {
+    // Setup the contract
+    let (contract_address, admin_address, erc20_address) = setup();
+
+    // Create dispatchers for both interfaces
+    let chain_lib_dispatcher = IChainLibDispatcher { contract_address };
+    let subscription_dispatcher = IChainLibDispatcher { contract_address };
+
+    // Create a specific subscriber address and use it consistently
+    let subscriber_address: ContractAddress = contract_address_const::<'subscriber'>();
+
+    token_faucet_and_allowance(
+        chain_lib_dispatcher, subscriber_address, erc20_address, 1000000000000000000,
+    );
+
+    // Set the caller to the subscriber for creating a subscription
+    cheat_caller_address(contract_address, subscriber_address, CheatSpan::Indefinite);
+
+    // Create a token-bound account
+    let user_name: felt252 = 'Mark';
+    let init_param1: felt252 = 'Mark@yahoo.com';
+    let init_param2: felt252 = 'Mark is a boy';
+    chain_lib_dispatcher.create_token_account(user_name, init_param1, init_param2);
+
+    // Process an initial payment (caller is already set to subscriber)
+    let amount: u256 = 100000000000000000; // 0.1 STRK in wei
+    let result = subscription_dispatcher.process_initial_payment(amount, subscriber_address);
+
+    // Verify the payment was processed successfully
+    assert(result == true, 'Initial payment failed');
+
+    // Since this is the first subscription, its ID is 0
+    let subscription_id: u256 = 0;
+
+    start_cheat_caller_address(contract_address, admin_address);
+    subscription_dispatcher.emergency_pause();
+
+    subscription_dispatcher.process_refund(subscription_id);
+    stop_cheat_caller_address(contract_address);
+}
 // Test that the function panics when subscription is not found
 #[test]
 #[should_panic(expected: 'Subscription not found')]
