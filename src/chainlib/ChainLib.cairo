@@ -2273,13 +2273,13 @@ pub mod ChainLib {
 
         fn emergency_pause(ref self: ContractState) {
             let caller = get_caller_address();
-            assert((self.admin.read() == caller), 'Only admin can verify users');
+            assert((self.admin.read() == caller), 'Only admin can pause');
 
             self.is_paused.write(true);
         }
         fn emergency_unpause(ref self: ContractState) {
             let caller = get_caller_address();
-            assert((self.admin.read() == caller), 'Only admin can verify users');
+            assert((self.admin.read() == caller), 'Only admin can unpause');
 
             self.is_paused.write(false);
         }

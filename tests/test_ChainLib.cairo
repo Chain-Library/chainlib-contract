@@ -80,6 +80,25 @@ fn test_create_user() {
     assert(!user.verified, 'already verified');
 }
 
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_create_user_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+    dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+}
+
 #[test]
 fn test_verify_user() {
     let (contract_address, admin_address, erc20_address) = setup();
@@ -157,6 +176,54 @@ fn test_update_user() {
 
 
 #[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_update_user_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call create_user
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    // Validate that the claim ID is correctly incremented
+    assert(account_id == 0, 'account_id should start from 0');
+
+    // Retrieve the user to verify it was stored correctly
+    let user = dispatcher.retrieve_user_profile(account_id);
+    assert(user.username == username, 'username mismatch');
+    assert(user.role == role, 'role mismatch');
+    assert(user.rank == rank, 'rank mismatch');
+    assert(user.metadata == metadata, 'metadata mismatch');
+    assert(!user.verified, 'already verified');
+
+    let updated_wallet_Address = contract_address_const::<'user'>();
+    let updated_username: felt252 = 'John';
+    let updated_metadata: felt252 = 'john is a man now';
+    let updated_role = Role::READER;
+    let updated_rank = Rank::BEGINNER;
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    // Update user data
+    dispatcher
+        .update_user_profile(
+            account_id,
+            updated_username,
+            updated_wallet_Address,
+            updated_role,
+            updated_rank,
+            updated_metadata,
+        );
+}
+
+#[test]
 fn test_deactivate_user() {
     let (contract_address, _, erc20_address) = setup();
     let dispatcher = IChainLibDispatcher { contract_address };
@@ -184,6 +251,40 @@ fn test_deactivate_user() {
     dispatcher.deactivate_profile(account_id);
     let user_deactivated = dispatcher.retrieve_user_profile(account_id);
     assert(user_deactivated.status == Status::DEACTIVATED, 'User should be deactivated');
+}
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_deactivate_user_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call create_user
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    // Validate that the claim ID is correctly incremented
+    assert(account_id == 0, 'account_id should start from 0');
+
+    // Retrieve the user to verify it was stored correctly
+    let user = dispatcher.retrieve_user_profile(account_id);
+    assert(user.username == username, 'username mismatch');
+    assert(user.role == role, 'role mismatch');
+    assert(user.rank == rank, 'rank mismatch');
+    assert(user.metadata == metadata, 'metadata mismatch');
+    assert(!user.verified, 'already verified');
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    dispatcher.deactivate_profile(account_id);
 }
 
 #[test]
@@ -309,6 +410,29 @@ fn test_create_subscription() {
     assert(subscription_record.len() == 1, 'record should have length 1');
 }
 
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_create_subscription_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call register
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    dispatcher.create_subscription(account_id, 500, 1);
+}
+
 #[test]
 #[should_panic(expected: 'User does not exist')]
 fn test_create_subscription_invalid_user() {
@@ -355,6 +479,35 @@ fn test_grant_premium_access_test_admin() {
     let access = dispatcher.grant_premium_access(account_id, content_id);
     assert(access, 'Access granted');
 }
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_grant_premium_access_should_panic_if_contract_paused() {
+    let (contract_address, admin, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::WRITER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    let title: felt252 = 'My Content';
+    let description: felt252 = 'This is a test content';
+    let content_type: ContentType = ContentType::Text;
+    let category: Category = Category::Education;
+
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+    let content_id = dispatcher.register_content(title, description, content_type, category);
+
+    start_cheat_caller_address(contract_address, admin);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    dispatcher.grant_premium_access(account_id, content_id);
+}
+
 
 #[test]
 #[should_panic(expected: "Only WRITER can post content")]
@@ -1429,7 +1582,7 @@ fn test_refund_flow_refund_request_timed_out() {
     let creator1_content_id: felt252 = dispatcher
         .register_content(title1, description, content_type, category);
     stop_cheat_caller_address(contract_address);
-
+    println!("creator1_content_id: {}", creator1_content_id);
     start_cheat_caller_address(contract_address, creator_2);
     let creator2_content_id: felt252 = dispatcher
         .register_content(title2, description, content_type, category);
@@ -1534,3 +1687,4 @@ fn test_refund_flow_refund_request_timed_out() {
     assert(creator_2_new_bal > creator_2_init_bal, 'Failed to credit creator2');
     assert(creator_3_new_bal > creator_3_init_bal, 'Failed to credit creator3');
 }
+

@@ -75,6 +75,33 @@ fn test_create_delegation() {
 
 
 #[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_create_delegation_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let contract_instance = IChainLibDispatcher { contract_address };
+
+    // Setup addresses
+    let owner = contract_address_const::<'OWNER'>();
+    let delegate = contract_address_const::<'DELEGATE'>();
+
+    // Set owner as caller
+    start_cheat_caller_address(contract_address, owner);
+
+    // Set current time
+    let current_time: u64 = 1000;
+    start_cheat_block_timestamp(contract_address, current_time);
+    let expiration: u64 = current_time + 3600; // 1 hour in the future
+    let max_actions: u64 = 5;
+
+    contract_instance.emergency_pause();
+    // Create delegation
+    contract_instance.create_delegation(delegate, PERMISSION_TRANSFER, expiration, max_actions);
+
+    stop_cheat_caller_address(owner);
+    stop_cheat_block_timestamp(contract_address);
+}
+
+#[test]
 #[should_panic(expected: 'Invalid delegate address')]
 fn test_create_delegation_zero_address() {
     let (contract_address, admin_address, erc20_address) = setup();
@@ -142,6 +169,41 @@ fn test_revoke_delegation() {
     stop_cheat_caller_address(owner);
     stop_cheat_block_timestamp(contract_address);
 }
+
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_revoke_delegation_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let contract_instance = IChainLibDispatcher { contract_address };
+
+    // Setup addresses
+    let owner = contract_address_const::<'OWNER'>();
+    let delegate = contract_address_const::<'DELEGATE'>();
+
+    // Set owner as caller
+    start_cheat_caller_address(contract_address, owner);
+
+    // Set current time
+    let current_time: u64 = 1000;
+    start_cheat_block_timestamp(contract_address, current_time);
+    let expiry: u64 = current_time + 3600;
+
+    // Create delegation first
+    contract_instance.create_delegation(delegate, PERMISSION_SIGN, expiry, 0);
+    
+    start_cheat_caller_address(contract_address, admin_address);
+    contract_instance.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    // Revoke delegation
+    contract_instance.revoke_delegation(delegate, PERMISSION_SIGN);
+
+    stop_cheat_caller_address(owner);
+    stop_cheat_block_timestamp(contract_address);
+}
+
 
 #[test]
 #[should_panic(expected: 'Delegate mismatch')]
@@ -239,6 +301,41 @@ fn test_use_delegation() {
     stop_cheat_caller_address(delegate);
     stop_cheat_block_timestamp(contract_address);
 }
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_use_delegation_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let contract_instance = IChainLibDispatcher { contract_address };
+
+    // Setup addresses
+    let owner = contract_address_const::<'OWNER'>();
+    let delegate = contract_address_const::<'DELEGATE'>();
+
+    // Set current time
+    let current_time: u64 = 1000;
+    start_cheat_block_timestamp(contract_address, current_time);
+    let expiry: u64 = current_time + 3600;
+
+    // Set owner as caller to create delegation
+    start_cheat_caller_address(contract_address, owner);
+
+    // Create delegation with max actions
+    let max_actions: u64 = 3;
+    contract_instance.create_delegation(delegate, PERMISSION_CALL, expiry, max_actions);
+
+    // Switch caller to delegate
+    start_cheat_caller_address(contract_address, delegate);
+
+    contract_instance.emergency_pause();
+    // Use delegation
+    contract_instance.use_delegation(owner, PERMISSION_CALL);
+
+    stop_cheat_caller_address(delegate);
+    stop_cheat_block_timestamp(contract_address);
+}
+
 
 #[test]
 #[should_panic(expected: 'Permission denied')]
