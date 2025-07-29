@@ -7,7 +7,6 @@ const PERMISSION_CALL: u64 = 0x4;
 const PERMISSION_ADMIN: u64 = 0x8;
 use chain_lib::chainlib::ChainLib::ChainLib::{
     DelegationCreated, DelegationExpired, DelegationInfo, DelegationRevoked, DelegationUsed, Event,
-    delegation_flags,
 };
 use chain_lib::interfaces::IChainLib::{IChainLibDispatcher, IChainLibDispatcherTrait};
 // use chain_lib::interfaces::IChainLib::{
