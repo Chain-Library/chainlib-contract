@@ -1928,7 +1928,6 @@ pub mod ChainLib {
             self.assert_not_paused();
             self.start_reentrancy_guard();
 
-            assert!(content_id != 0, "Content ID cannot be empty");
             // assert!(content_id != 0, "Content ID cannot be empty");
             // I commented the above line out because in other parts of the project, it is
             // explicitly stated that first content id should be 0
@@ -2276,12 +2275,14 @@ pub mod ChainLib {
             assert((self.admin.read() == caller), 'Only admin can pause');
 
             self.is_paused.write(true);
+            self.emit(EmergencyPaused { paused_by: caller, timestamp: get_block_timestamp() });
         }
         fn emergency_unpause(ref self: ContractState) {
             let caller = get_caller_address();
             assert((self.admin.read() == caller), 'Only admin can unpause');
 
             self.is_paused.write(false);
+            self.emit(EmergencyUnpause { unpaused_by: caller, timestamp: get_block_timestamp() });
         }
 
         fn is_paused(self: @ContractState) -> bool {
@@ -2430,6 +2431,7 @@ pub mod ChainLib {
         fn approve_refund(
             ref self: ContractState, refund_id: u64, user_id: u256, refund_percentage: Option<u256>,
         ) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can approve refunds');
@@ -2498,6 +2500,7 @@ pub mod ChainLib {
         }
 
         fn decline_refund(ref self: ContractState, refund_id: u64, user_id: u256) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can approve refunds');
@@ -2525,6 +2528,7 @@ pub mod ChainLib {
         }
 
         fn refund_user(ref self: ContractState, refund_id: u64, user_id: u256) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can approve refunds');
@@ -2594,6 +2598,7 @@ pub mod ChainLib {
         }
 
         fn set_platform_fee(ref self: ContractState, platform_fee: u256) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can execute refunds');
@@ -2605,6 +2610,7 @@ pub mod ChainLib {
         }
 
         fn set_refund_window(ref self: ContractState, window: u64) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             // Ensure that only an admin can verify users.
             assert((self.admin.read() == caller), 'Only admin can execute refunds');

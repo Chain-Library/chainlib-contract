@@ -1,3 +1,5 @@
+use starknet::get_block_timestamp;
+use ChainLib::ChainLib::{EmergencyPaused, EmergencyUnpause};
 // Import the contract modules
 use chain_lib::base::types::{
     PurchaseStatus, Rank, Refund, RefundRequestReason, RefundStatus, Role, Status,
@@ -7,9 +9,9 @@ use chain_lib::chainlib::ChainLib::ChainLib::{Category, ContentType, PlanType, S
 use chain_lib::interfaces::IChainLib::{IChainLib, IChainLibDispatcher, IChainLibDispatcherTrait};
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use snforge_std::{
-    CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_block_timestamp, cheat_caller_address,
-    declare, start_cheat_block_timestamp, start_cheat_caller_address, stop_cheat_block_timestamp,
-    stop_cheat_caller_address,
+    CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpyAssertionsTrait,
+    cheat_block_timestamp, cheat_caller_address, declare, spy_events, start_cheat_block_timestamp,
+    start_cheat_caller_address, stop_cheat_block_timestamp, stop_cheat_caller_address,
 };
 use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;
@@ -876,6 +878,7 @@ fn test_verify_purchase() {
     assert(receipt.purchase_id == purchase_id, 'receipt error');
 }
 
+
 #[test]
 fn test_update_purchase_status() {
     let (contract_address, admin_address, erc20_address) = setup();
@@ -1006,6 +1009,7 @@ fn test_cancel_subscription() {
     assert(subscription_record.len() == 1, 'record should have length 1');
 }
 
+
 #[test]
 fn test_renew_subscription() {
     let (contract_address, _, erc20_address) = setup();
@@ -1044,6 +1048,7 @@ fn test_renew_subscription() {
     let subscription_record = dispatcher.get_user_subscription_record(account_id);
     assert(subscription_record.len() == 1, 'record should have length 1');
 }
+
 
 #[test]
 fn test_batch_payout_creators() {
@@ -1355,6 +1360,7 @@ fn test_refund_flow_approve_refund_request() {
     assert(creator_2_new_bal > creator_2_init_bal, 'Failed to credit creator2');
     assert(creator_3_new_bal > creator_3_init_bal, 'Failed to credit creator3');
 }
+
 
 #[test]
 #[should_panic(expected: 'Refund request declined')]
@@ -1687,4 +1693,496 @@ fn test_refund_flow_refund_request_timed_out() {
     assert(creator_2_new_bal > creator_2_init_bal, 'Failed to credit creator2');
     assert(creator_3_new_bal > creator_3_init_bal, 'Failed to credit creator3');
 }
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_cancel_subscription_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call register
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    dispatcher.create_subscription(account_id, 500, 1);
+    let subscription = dispatcher.get_user_subscription(account_id);
+    assert(subscription.id == 1, 'Subscription ID should be 1');
+    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    assert(subscription.status == SubscriptionStatus::Active, 'Plan type should be YEARLY');
+    let subscription_record = dispatcher.get_user_subscription_record(account_id);
+    assert(subscription_record.len() == 1, 'record should have length 1');
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    dispatcher.cancel_subscription(account_id);
+}
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_renew_subscription_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    // Test input values
+    let username: felt252 = 'John';
+    let role: Role = Role::READER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    // Call register
+    let account_id = dispatcher.register_user(username, role.clone(), rank.clone(), metadata);
+
+    dispatcher.create_subscription(account_id, 500, 1);
+    let subscription = dispatcher.get_user_subscription(account_id);
+    assert(subscription.id == 1, 'Subscription ID should be 1');
+    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    assert(subscription.status == SubscriptionStatus::Active, 'Plan type should be YEARLY');
+    let subscription_record = dispatcher.get_user_subscription_record(account_id);
+    assert(subscription_record.len() == 1, 'record should have length 1');
+
+    dispatcher.cancel_subscription(account_id);
+    let subscription = dispatcher.get_user_subscription(account_id);
+    assert(subscription.id == 1, 'Subscription ID should be 1');
+    assert(subscription.subscription_type == PlanType::YEARLY, 'Plan type should be YEARLY');
+    assert(subscription.status == SubscriptionStatus::Cancelled, 'Plan status should be cancelled');
+    let subscription_record = dispatcher.get_user_subscription_record(account_id);
+    assert(subscription_record.len() == 1, 'record should have length 1');
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    dispatcher.renew_subscription(account_id);
+}
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_refund_flow_refund_user_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+    let user_address = contract_address_const::<'user'>();
+    let creator_1 = contract_address_const::<'creator_1'>();
+    let creator_2 = contract_address_const::<'creator_2'>();
+    let creator_3 = contract_address_const::<'creator_3'>();
+
+    let username1: felt252 = 'creator_1';
+    let username2: felt252 = 'creator_2';
+    let username3: felt252 = 'creator_3';
+    let user_name: felt252 = 'user';
+
+    let role: Role = Role::WRITER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    start_cheat_caller_address(contract_address, user_address);
+    let user_id = dispatcher.register_user(user_name, Role::READER, Rank::BEGINNER, metadata);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_1);
+    let creator1_id = dispatcher.register_user(username1, role.clone(), rank.clone(), metadata);
+    println!("successfully registered creator_1 as writer");
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_2);
+    let creator2_id = dispatcher.register_user(username2, role.clone(), rank.clone(), metadata);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_3);
+    let creator3_id = dispatcher.register_user(username3, role.clone(), rank.clone(), metadata);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, admin_address);
+    let is_creator_1_verified = dispatcher.verify_user(creator1_id);
+    let is_creator_2_verified = dispatcher.verify_user(creator2_id);
+    let is_creator_3_verified = dispatcher.verify_user(creator3_id);
+    stop_cheat_caller_address(contract_address);
+
+    let erc20_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    let creator_1_init_bal = erc20_dispatcher.balance_of(creator_1);
+    let creator_2_init_bal = erc20_dispatcher.balance_of(creator_2);
+    let creator_3_init_bal = erc20_dispatcher.balance_of(creator_3);
+
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
+    // Set up test data
+    let title1: felt252 = 'Creator 1 content';
+    let title2: felt252 = 'Creator 2 content';
+    let title3: felt252 = 'Creator 3 content';
+
+    let description: felt252 = 'This is a test content';
+    let content_type: ContentType = ContentType::Text;
+    let category: Category = Category::Education;
+
+    start_cheat_caller_address(contract_address, creator_1);
+    let creator1_content_id: felt252 = dispatcher
+        .register_content(title1, description, content_type, category);
+    stop_cheat_caller_address(contract_address);
+    println!("creator1_content_id: {}", creator1_content_id);
+    start_cheat_caller_address(contract_address, creator_2);
+    let creator2_content_id: felt252 = dispatcher
+        .register_content(title2, description, content_type, category);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_3);
+    let creator3_content_id: felt252 = dispatcher
+        .register_content(title3, description, content_type, category);
+    stop_cheat_caller_address(contract_address);
+    let price_1: u256 = 1000_u256;
+    let price_2: u256 = 2000_u256;
+    let price_3: u256 = 1500_u256;
+
+    // Set creator_1 as caller to set up content price
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+    // Set up content with price
+    setup_content_with_price(
+        dispatcher, admin_address, contract_address, creator1_content_id, price_1,
+    );
+
+    // Set up content with price
+    setup_content_with_price(
+        dispatcher, admin_address, contract_address, creator2_content_id, price_2,
+    );
+
+    // Set up content with price
+    setup_content_with_price(
+        dispatcher, admin_address, contract_address, creator3_content_id, price_3,
+    );
+
+    // Set user as content consumer
+    cheat_caller_address(contract_address, user_address, CheatSpan::Indefinite);
+
+    // Purchase the content
+    let purchase_id_1 = dispatcher.purchase_content(creator1_content_id, 'tx1');
+    let purchase_id_2 = dispatcher.purchase_content(creator2_content_id, 'tx2');
+    let purchase_id_3 = dispatcher.purchase_content(creator3_content_id, 'tx3');
+
+    // Initially, purchase should not be verified (status is Pending)
+    let is_purchase_1_verified = dispatcher.verify_purchase(purchase_id_1);
+    let is_purchase_2_verified = dispatcher.verify_purchase(purchase_id_2);
+    let is_purchase_3_verified = dispatcher.verify_purchase(purchase_id_3);
+    assert(!is_purchase_1_verified, '1 should not be verified');
+    assert(!is_purchase_2_verified, '2 should not be verified');
+    assert(!is_purchase_3_verified, '3 should not be verified');
+
+    // Set admin as caller to update the purchase status
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+    cheat_block_timestamp(contract_address, 0, CheatSpan::Indefinite);
+
+    // Update purchase status to Completed
+    let update_result_1 = dispatcher
+        .update_purchase_status(purchase_id_1, PurchaseStatus::Completed);
+    assert(update_result_1, 'Failed to update status1');
+    let update_result_2 = dispatcher
+        .update_purchase_status(purchase_id_2, PurchaseStatus::Completed);
+    assert(update_result_2, 'Failed to update status1');
+    let update_result_3 = dispatcher
+        .update_purchase_status(purchase_id_3, PurchaseStatus::Completed);
+    assert(update_result_3, 'Failed to update status1');
+
+    // Now the purchase should be verified
+    let is_now_verified1 = dispatcher.verify_purchase(purchase_id_1);
+    assert(is_now_verified1, 'Purchase should be verified');
+    let is_now_verified2 = dispatcher.verify_purchase(purchase_id_2);
+    assert(is_now_verified2, 'Purchase should be verified');
+    let is_now_verified3 = dispatcher.verify_purchase(purchase_id_3);
+    assert(is_now_verified3, 'Purchase should be verified');
+
+    let receipt = dispatcher.get_receipt(1);
+
+    assert(receipt.purchase_id == purchase_id_1, 'receipt error');
+
+    start_cheat_caller_address(contract_address, user_address);
+    start_cheat_block_timestamp(contract_address, 86400);
+    dispatcher.request_refund(purchase_id_1, RefundRequestReason::MISREPRESENTED_CONTENT);
+    stop_cheat_block_timestamp(contract_address);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, admin_address);
+    let refunds_array = dispatcher.get_user_refunds(user_id);
+    let refund_request = refunds_array.at(0);
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    dispatcher.decline_refund(*refund_request.refund_id, user_id);
+}
+
+
+
+#[test]
+fn test_contract_pause_and_unpause() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    let is_paused = dispatcher.is_paused();
+    assert(is_paused, 'Contract should be paused');
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_unpause();
+    stop_cheat_caller_address(contract_address);
+
+    let is_unpaused = dispatcher.is_paused();
+    assert(!is_unpaused, 'Contract should be unpaused');
+}
+
+#[test]
+fn test_contract_pause_event() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+    let mut spy = spy_events();
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+    spy
+        .assert_emitted(
+            @array![
+                (
+                    contract_address,
+                    chain_lib::chainlib::ChainLib::ChainLib::Event::EmergencyPaused (EmergencyPaused { paused_by: admin_address, timestamp: get_block_timestamp() }),
+                ),
+            ],
+        );
+}
+
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_verify_purchase_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+    let user_address = contract_address_const::<'user'>();
+
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
+    // Set up test data
+    let content_id: felt252 = 'content1';
+    let price: u256 = 1000_u256;
+
+    // Set admin as caller to set up content price
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+
+    // Set up content with price
+    setup_content_with_price(dispatcher, admin_address, contract_address, content_id, price);
+
+    // Set user as caller
+    cheat_caller_address(contract_address, user_address, CheatSpan::Indefinite);
+
+    // Purchase the content
+    let purchase_id = dispatcher.purchase_content(content_id, 'tx1');
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    // Initially, purchase should not be verified (status is Pending)
+    let is_verified = dispatcher.verify_purchase(purchase_id);
+    assert(!is_verified, 'Purchase should not be verified');
+}
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_update_purchase_status_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+    let user_address = contract_address_const::<'user'>();
+
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
+    // Set up test data
+    let content_id: felt252 = 'content1';
+    let price: u256 = 1000_u256;
+
+    // Set admin as caller to set up content price
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+
+    // Set up content with price
+    setup_content_with_price(dispatcher, admin_address, contract_address, content_id, price);
+
+    // Set user as caller
+    cheat_caller_address(contract_address, user_address, CheatSpan::Indefinite);
+
+    // Purchase the content
+    let purchase_id = dispatcher.purchase_content(content_id, 'tx1');
+
+    // Initially, purchase should not be verified (status is Pending)
+    let is_verified = dispatcher.verify_purchase(purchase_id);
+    assert(!is_verified, 'Purchase should not be verified');
+
+    // Set admin as caller to update the purchase status
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
+    // Update purchase status to Completed
+    let update_result = dispatcher.update_purchase_status(purchase_id, PurchaseStatus::Completed);
+    assert(update_result, 'Failed to update status');
+
+    // Now the purchase should be verified
+    let is_now_verified = dispatcher.verify_purchase(purchase_id);
+    assert(is_now_verified, 'Purchase should be verified');
+
+    let receipt = dispatcher.get_receipt(1);
+
+    assert(receipt.purchase_id == purchase_id, 'receipt error');
+}
+
+
+
+#[test]
+#[should_panic(expected: 'Contract is paused')]
+fn test_batch_payout_creators_should_panic_if_contract_paused() {
+    let (contract_address, admin_address, erc20_address) = setup();
+    let dispatcher = IChainLibDispatcher { contract_address };
+    let user_address = contract_address_const::<'user'>();
+    let creator_1 = contract_address_const::<'creator_1'>();
+    let creator_2 = contract_address_const::<'creator_2'>();
+    let creator_3 = contract_address_const::<'creator_3'>();
+
+    let username1: felt252 = 'creator_1';
+    let username2: felt252 = 'creator_2';
+    let username3: felt252 = 'creator_3';
+
+    let role: Role = Role::WRITER;
+    let rank: Rank = Rank::BEGINNER;
+    let metadata: felt252 = 'john is a boy';
+
+    start_cheat_caller_address(contract_address, creator_1);
+    let creator1_id = dispatcher.register_user(username1, role.clone(), rank.clone(), metadata);
+    println!("successfully registered creator_1 as writer");
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_2);
+    let creator2_id = dispatcher.register_user(username2, role.clone(), rank.clone(), metadata);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_3);
+    let creator3_id = dispatcher.register_user(username3, role.clone(), rank.clone(), metadata);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, admin_address);
+    let is_creator_1_verified = dispatcher.verify_user(creator1_id);
+    let is_creator_2_verified = dispatcher.verify_user(creator2_id);
+    let is_creator_3_verified = dispatcher.verify_user(creator3_id);
+    stop_cheat_caller_address(contract_address);
+
+    let erc20_dispatcher = IERC20Dispatcher { contract_address: erc20_address };
+    let creator_1_init_bal = erc20_dispatcher.balance_of(creator_1);
+    let creator_2_init_bal = erc20_dispatcher.balance_of(creator_2);
+    let creator_3_init_bal = erc20_dispatcher.balance_of(creator_3);
+
+    token_faucet_and_allowance(dispatcher, user_address, erc20_address, 100000);
+    // Set up test data
+    let title1: felt252 = 'Creator 1 content';
+    let title2: felt252 = 'Creator 2 content';
+    let title3: felt252 = 'Creator 3 content';
+
+    let description: felt252 = 'This is a test content';
+    let content_type: ContentType = ContentType::Text;
+    let category: Category = Category::Education;
+
+    start_cheat_caller_address(contract_address, creator_1);
+    let creator1_content_id: felt252 = dispatcher
+        .register_content(title1, description, content_type, category);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_2);
+    let creator2_content_id: felt252 = dispatcher
+        .register_content(title2, description, content_type, category);
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator_3);
+    let creator3_content_id: felt252 = dispatcher
+        .register_content(title3, description, content_type, category);
+    stop_cheat_caller_address(contract_address);
+    let price_1: u256 = 1000_u256;
+    let price_2: u256 = 2000_u256;
+    let price_3: u256 = 1500_u256;
+
+    // Set creator_1 as caller to set up content price
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+    // Set up content with price
+    setup_content_with_price(
+        dispatcher, admin_address, contract_address, creator1_content_id, price_1,
+    );
+
+    // Set up content with price
+    setup_content_with_price(
+        dispatcher, admin_address, contract_address, creator2_content_id, price_2,
+    );
+
+    // Set up content with price
+    setup_content_with_price(
+        dispatcher, admin_address, contract_address, creator3_content_id, price_3,
+    );
+
+    // Set user as content consumer
+    cheat_caller_address(contract_address, user_address, CheatSpan::Indefinite);
+
+    // Purchase the content
+    let purchase_id_1 = dispatcher.purchase_content(creator1_content_id, 'tx1');
+    let purchase_id_2 = dispatcher.purchase_content(creator2_content_id, 'tx2');
+    let purchase_id_3 = dispatcher.purchase_content(creator3_content_id, 'tx3');
+
+    // Initially, purchase should not be verified (status is Pending)
+    let is_purchase_1_verified = dispatcher.verify_purchase(purchase_id_1);
+    let is_purchase_2_verified = dispatcher.verify_purchase(purchase_id_2);
+    let is_purchase_3_verified = dispatcher.verify_purchase(purchase_id_3);
+    assert(!is_purchase_1_verified, '1 should not be verified');
+    assert(!is_purchase_2_verified, '2 should not be verified');
+    assert(!is_purchase_3_verified, '3 should not be verified');
+
+    // Set admin as caller to update the purchase status
+    cheat_caller_address(contract_address, admin_address, CheatSpan::Indefinite);
+    cheat_block_timestamp(contract_address, 0, CheatSpan::Indefinite);
+
+    // Update purchase status to Completed
+    let update_result_1 = dispatcher
+        .update_purchase_status(purchase_id_1, PurchaseStatus::Completed);
+    assert(update_result_1, 'Failed to update status1');
+    let update_result_2 = dispatcher
+        .update_purchase_status(purchase_id_2, PurchaseStatus::Completed);
+    assert(update_result_2, 'Failed to update status1');
+    let update_result_3 = dispatcher
+        .update_purchase_status(purchase_id_3, PurchaseStatus::Completed);
+    assert(update_result_3, 'Failed to update status1');
+
+    // Now the purchase should be verified
+    let is_now_verified1 = dispatcher.verify_purchase(purchase_id_1);
+    assert(is_now_verified1, 'Purchase should be verified');
+    let is_now_verified2 = dispatcher.verify_purchase(purchase_id_2);
+    assert(is_now_verified2, 'Purchase should be verified');
+    let is_now_verified3 = dispatcher.verify_purchase(purchase_id_3);
+    assert(is_now_verified3, 'Purchase should be verified');
+
+    let receipt = dispatcher.get_receipt(1);
+
+    assert(receipt.purchase_id == purchase_id_1, 'receipt error');
+
+    // Still admin calling
+    cheat_block_timestamp(contract_address, 86400 * 8, CheatSpan::Indefinite);
+    // start_cheat_block_timestamp(contract_address);
+    start_cheat_caller_address(contract_address, admin_address);
+    dispatcher.emergency_pause();
+    dispatcher.batch_payout_creators();
+    stop_cheat_caller_address(contract_address);
+
+
+}
+
+
 

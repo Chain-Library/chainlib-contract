@@ -621,7 +621,7 @@ fn test_verify_payment_admin_only() {
 }
 
 #[test]
-#[should_panic(expected: '')]
+#[should_panic(expected: 'Contract is paused')]
 fn test_verify_payment_should_panic_if_contract_paused() {
     // Setup the contract
     let (contract_address, admin_address, erc20_address) = setup();

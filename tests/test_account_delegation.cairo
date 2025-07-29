@@ -93,7 +93,10 @@ fn test_create_delegation_should_panic_if_contract_paused() {
     let expiration: u64 = current_time + 3600; // 1 hour in the future
     let max_actions: u64 = 5;
 
+    start_cheat_caller_address(contract_address, admin_address);
     contract_instance.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
     // Create delegation
     contract_instance.create_delegation(delegate, PERMISSION_TRANSFER, expiration, max_actions);
 
@@ -171,7 +174,6 @@ fn test_revoke_delegation() {
 }
 
 
-
 #[test]
 #[should_panic(expected: 'Contract is paused')]
 fn test_revoke_delegation_should_panic_if_contract_paused() {
@@ -192,7 +194,7 @@ fn test_revoke_delegation_should_panic_if_contract_paused() {
 
     // Create delegation first
     contract_instance.create_delegation(delegate, PERMISSION_SIGN, expiry, 0);
-    
+
     start_cheat_caller_address(contract_address, admin_address);
     contract_instance.emergency_pause();
     stop_cheat_caller_address(contract_address);
@@ -328,7 +330,10 @@ fn test_use_delegation_should_panic_if_contract_paused() {
     // Switch caller to delegate
     start_cheat_caller_address(contract_address, delegate);
 
+    start_cheat_caller_address(contract_address, admin_address);
     contract_instance.emergency_pause();
+    stop_cheat_caller_address(contract_address);
+
     // Use delegation
     contract_instance.use_delegation(owner, PERMISSION_CALL);
 
