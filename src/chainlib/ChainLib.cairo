@@ -2314,6 +2314,7 @@ pub mod ChainLib {
         }
 
         fn batch_payout_creators(ref self: ContractState) {
+            self.assert_not_paused();
             let caller = get_caller_address();
             assert(self.admin.read() == caller, 'Only admin can execute payout');
 
