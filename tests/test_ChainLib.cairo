@@ -1,4 +1,3 @@
-use starknet::get_block_timestamp;
 use ChainLib::ChainLib::{EmergencyPaused, EmergencyUnpause};
 // Import the contract modules
 use chain_lib::base::types::{
@@ -13,10 +12,10 @@ use snforge_std::{
     cheat_block_timestamp, cheat_caller_address, declare, spy_events, start_cheat_block_timestamp,
     start_cheat_caller_address, stop_cheat_block_timestamp, stop_cheat_caller_address,
 };
-use starknet::ContractAddress;
 use starknet::class_hash::ClassHash;
 use starknet::contract_address::contract_address_const;
 use starknet::testing::{set_caller_address, set_contract_address};
+use starknet::{ContractAddress, get_block_timestamp};
 use crate::test_utils::{setup, setup_content_with_price, token_faucet_and_allowance};
 
 #[test]
@@ -1917,7 +1916,6 @@ fn test_refund_flow_refund_user_should_panic_if_contract_paused() {
 }
 
 
-
 #[test]
 fn test_contract_pause_and_unpause() {
     let (contract_address, admin_address, erc20_address) = setup();
@@ -1951,12 +1949,15 @@ fn test_contract_pause_event() {
             @array![
                 (
                     contract_address,
-                    chain_lib::chainlib::ChainLib::ChainLib::Event::EmergencyPaused (EmergencyPaused { paused_by: admin_address, timestamp: get_block_timestamp() }),
+                    chain_lib::chainlib::ChainLib::ChainLib::Event::EmergencyPaused(
+                        EmergencyPaused {
+                            paused_by: admin_address, timestamp: get_block_timestamp(),
+                        },
+                    ),
                 ),
             ],
         );
 }
-
 
 
 #[test]
@@ -2040,7 +2041,6 @@ fn test_update_purchase_status_should_panic_if_contract_paused() {
 
     assert(receipt.purchase_id == purchase_id, 'receipt error');
 }
-
 
 
 #[test]
@@ -2180,9 +2180,5 @@ fn test_batch_payout_creators_should_panic_if_contract_paused() {
     dispatcher.emergency_pause();
     dispatcher.batch_payout_creators();
     stop_cheat_caller_address(contract_address);
-
-
 }
-
-
 
