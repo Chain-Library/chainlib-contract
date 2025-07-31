@@ -225,3 +225,118 @@ pub struct Receipt {
     pub issued_at: u64,
     pub transaction_hash: felt252,
 }
+
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+pub enum ContentType {
+    #[default]
+    Text,
+    Video,
+    Image,
+    // Any other content type
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+pub enum Category {
+    Software,
+    #[default]
+    Education,
+    Literature,
+    Art,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+pub enum SubscriptionStatus {
+    Active,
+    #[default]
+    Inactive,
+    Cancelled,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct ContentMetadata {
+    pub content_id: felt252,
+    pub title: felt252,
+    pub description: felt252,
+    pub content_type: ContentType,
+    pub creator: ContractAddress,
+    pub category: Category,
+    pub last_updated: u64,
+    pub version: u64,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct ContentUpdateHistory {
+    pub content_id: felt252,
+    pub version: u64,
+    pub updater: ContractAddress,
+    pub timestamp: u64,
+    pub update_type: ContentUpdateType,
+    pub previous_title: felt252,
+    pub previous_description: felt252,
+    pub previous_content_type: ContentType,
+    pub previous_category: Category,
+    pub new_title: felt252,
+    pub new_description: felt252,
+    pub new_content_type: ContentType,
+    pub new_category: Category,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+pub enum ContentUpdateType {
+    #[default]
+    Full,
+    Partial,
+    Title,
+    Description,
+    ContentType,
+    Category,
+}
+
+#[derive(Drop, Serde, starknet::Store, Clone)]
+pub struct Subscription {
+    pub id: u256,
+    pub subscriber: ContractAddress,
+    pub plan_id: u256,
+    pub amount: u256,
+    pub start_date: u64,
+    pub end_date: u64,
+    pub is_active: bool,
+    pub last_payment_date: u64,
+    pub subscription_type: PlanType,
+    pub status: SubscriptionStatus,
+}
+
+#[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
+pub enum PlanType {
+    #[default]
+    MONTHLY,
+    YEARLY,
+    TRIAL,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct AccessCache {
+    pub user_id: u256,
+    pub content_id: felt252,
+    pub has_access: bool,
+    pub timestamp: u64,
+    pub expiry: u64,
+}
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct ContentAccess {
+    pub content_id: felt252,
+    pub access_type: AccessType,
+    pub requires_subscription: bool,
+    pub is_premium: bool,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store, Debug)]
+pub struct Payment {
+    pub id: u256,
+    pub subscription_id: u256,
+    pub amount: u256,
+    pub timestamp: u64,
+    pub is_verified: bool,
+    pub is_refunded: bool,
+}

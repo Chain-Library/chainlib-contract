@@ -4,7 +4,7 @@ use crate::base::types::{
     AccessRule, Permissions, Purchase, PurchaseStatus, Rank, Receipt, Refund, RefundRequestReason,
     Role, TokenBoundAccount, User, VerificationRequirement, VerificationType,
 };
-use crate::chainlib::ChainLib::ChainLib::{
+use crate::base::types::{
     Category, ContentMetadata, ContentType, ContentUpdateHistory, ContentUpdateType, DelegationInfo,
     Payment, PlanType, Subscription,
 };

@@ -1,6 +1,7 @@
 pub mod base {
     pub mod errors;
     pub mod types;
+    pub mod events;
 }
 pub mod chainlib {
     pub mod ChainLib;
