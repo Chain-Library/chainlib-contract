@@ -12,7 +12,7 @@ pub struct TokenBoundAccount {
     pub owner_permissions: Permissions // Owner's permissions
 }
 
-#[derive(Drop, Serde, starknet::Store, Clone)]
+#[derive(Drop, Serde, starknet::Store, Clone, Copy)]
 pub struct User {
     pub id: u256,
     pub username: felt252,
@@ -24,7 +24,7 @@ pub struct User {
     pub status: Status,
 }
 
-#[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
+#[derive(Drop, Serde, starknet::Store, PartialEq, Copy)]
 pub enum Status {
     #[default]
     ACTIVE,
@@ -54,7 +54,7 @@ pub mod permission_flags {
     pub const DELETE: u64 = 0x80; // Can delete the account
 }
 
-#[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
+#[derive(Drop, Serde, starknet::Store, PartialEq, Copy)]
 pub enum Role {
     #[default]
     NIL,
@@ -63,7 +63,7 @@ pub enum Role {
 }
 
 
-#[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
+#[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy, Hash)]
 pub enum Rank {
     #[default]
     BEGINNER,
@@ -224,4 +224,60 @@ pub struct Receipt {
     pub status: ReceiptStatus,
     pub issued_at: u64,
     pub transaction_hash: felt252,
+}
+
+
+// Activity tracking for rank progression
+#[derive(Drop, Serde, starknet::Store, Clone, Debug, Copy)]
+pub struct UserActivity {
+    pub user_id: u256,
+    pub total_purchases: u256,
+    pub total_content_created: u256,
+    pub total_spent: u256,
+    pub total_earned: u256,
+    pub subscription_months: u64,
+    pub last_activity: u64,
+    pub activity_score: u256,
+}
+
+#[derive(Drop, Serde, starknet::Store, Clone, Debug, Copy)]
+pub struct RankRequirements {
+    pub rank: Rank,
+    pub min_purchases: u256,
+    pub min_content_created: u256,
+    pub min_total_spent: u256,
+    pub min_total_earned: u256,
+    pub min_subscription_months: u64,
+    pub min_activity_score: u256,
+}
+
+#[derive(Drop, Serde, starknet::Store, Clone, PartialEq, Debug, Copy)]
+pub enum ActivityType {
+    #[default]
+    Purchase,
+    ContentCreation,
+    SubscriptionRenewal,
+    ContentUpdate,
+    Verification,
+}
+
+#[derive(Drop, Serde, starknet::Store, Debug, Copy)]
+pub struct ActivityEvent {
+    pub id: u256,
+    pub user_id: u256,
+    pub activity_type: ActivityType,
+    pub points: u256,
+    pub timestamp: u64,
+    pub metadata: felt252 // Additional context about the activity
+}
+
+// Rank benefits and permissions
+#[derive(Drop, Serde, starknet::Store, Clone, Debug, Copy)]
+pub struct RankBenefits {
+    pub rank: Rank,
+    pub discount_percentage: u256, // Percentage discount on purchases (basis points)
+    pub max_content_uploads: u256, // Maximum content uploads per month
+    pub priority_support: bool,
+    pub early_access: bool,
+    pub special_permissions: u64 // Additional permission flags
 }

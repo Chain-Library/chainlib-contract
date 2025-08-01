@@ -15,9 +15,9 @@ pub mod ChainLib {
     };
     use crate::base::errors::{payment_errors, permission_errors};
     use crate::base::types::{
-        AccessRule, AccessType, Payout, PayoutSchedule, PayoutStatus, Permissions, Purchase,
-        PurchaseStatus, Rank, Receipt, ReceiptStatus, Refund, RefundRequestReason, RefundStatus,
-        Role, Status, TokenBoundAccount, User, VerificationRequirement, VerificationType,
+        AccessRule, AccessType, ActivityEvent, ActivityType, Payout, PayoutSchedule, PayoutStatus, Permissions, Purchase,
+        PurchaseStatus, Rank, RankBenefits, RankRequirements, Receipt, ReceiptStatus, Refund, RefundRequestReason, RefundStatus,
+        Role, Status, TokenBoundAccount, User, UserActivity, VerificationRequirement, VerificationType,
         delegation_flags, permission_flags,
     };
     use crate::interfaces::IChainLib::IChainLib;
@@ -258,7 +258,15 @@ pub mod ChainLib {
             (felt252, u64), ContentUpdateHistory,
         >, // Maps (content_id, version) to update history
         content_version_count: Map<felt252, u64>, // Maps content_id to current version count
-        content_update_count: Map<felt252, u64> // Maps content_id to total update count
+        content_update_count: Map<felt252, u64>, // Maps content_id to total update count
+        // Rank Progression System
+        user_activities: Map<u256, UserActivity>, // Maps user_id to UserActivity
+        activity_events: Map<u256, ActivityEvent>, // Maps activity_id to ActivityEvent
+        next_activity_id: u256, // Counter for activity IDs
+        rank_requirements: Map<Rank, RankRequirements>, // Maps rank to requirements
+        rank_benefits: Map<Rank, RankBenefits>, // Maps rank to benefits
+        user_rank_history: Map<(u256, u64), Rank>, // Maps (user_id, timestamp) to rank
+        rank_progression_enabled: bool, // Flag to enable/disable rank progression
     }
 
     const REFUND_WINDOW: u64 = 86400;
@@ -341,6 +349,11 @@ pub mod ChainLib {
         // Content Update Events
         ContentUpdated: ContentUpdated,
         ContentUpdateHistoryRecorded: ContentUpdateHistoryRecorded,
+        // Rank Progression Events
+        ActivityRecorded: ActivityRecorded,
+        RankUpdated: RankUpdated,
+        RankRequirementsSet: RankRequirementsSet,
+        RankBenefitsSet: RankBenefitsSet,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -611,6 +624,49 @@ pub mod ChainLib {
         pub timestamp: u64,
     }
 
+//================================================
+// Event Struct Definitions
+//================================================
+
+/// @notice Emitted when a user's activity is recorded.
+#[derive(Drop, starknet::Event)]
+pub struct ActivityRecorded {
+    #[key]
+    pub user_id: u256,
+    pub activity_type: ActivityType,
+    pub points: u256,
+    pub timestamp: u64,
+}
+
+/// @notice Emitted when a user's rank is updated.
+#[derive(Drop, starknet::Event)]
+pub struct RankUpdated {
+    #[key]
+    pub user_id: u256,
+    pub old_rank: Rank,
+    pub new_rank: Rank,
+    pub timestamp: u64,
+}
+
+/// @notice Emitted when the requirements for a rank are set or updated.
+#[derive(Drop, starknet::Event)]
+pub struct RankRequirementsSet {
+    #[key]
+    pub rank: Rank,
+    pub requirements: RankRequirements,
+    pub timestamp: u64,
+}
+
+/// @notice Emitted when the benefits for a rank are set or updated.
+#[derive(Drop, starknet::Event)]
+pub struct RankBenefitsSet {
+    #[key]
+    pub rank: Rank,
+    pub benefits: RankBenefits,
+    pub timestamp: u64,
+}
+
+
     #[abi(embed_v0)]
     impl ChainLibNetImpl of IChainLib<ContractState> {
         fn create_token_account(
@@ -778,8 +834,8 @@ pub mod ChainLib {
             let mut user = self.users.read(user_id);
             user.verified = true;
             let user_address = user.wallet_address;
-            self.users.write(user.id, user.clone());
-            self.user_by_address.write(user_address, user.clone());
+            self.users.write(user.id, user);
+            self.user_by_address.write(user_address, user);
             true
         }
         fn retrieve_user_profile(ref self: ContractState, user_id: u256) -> User {
@@ -2898,6 +2954,313 @@ pub mod ChainLib {
             self.refund_window.write(window);
             self.emit(RefundWindowChanged { new_window: window, timestamp: get_block_timestamp() });
         }
+
+        // ============ RANK PROGRESSION SYSTEM ============
+
+/// @notice Records user activity and updates activity score
+/// @param user_id The ID of the user performing the activity
+/// @param activity_type The type of activity being recorded
+/// @param points The points to award for this activity
+/// @param metadata Additional context about the activity
+fn record_activity(
+    ref self: ContractState,
+    user_id: u256,
+    activity_type: ActivityType,
+    points: u256,
+    metadata: felt252,
+) {
+    self.assert_not_paused();
+    
+    // Get or create user activity record
+    let mut user_activity = self.user_activities.read(user_id);
+    if user_activity.user_id == 0 {
+        // Initialize new activity record
+        user_activity = UserActivity {
+            user_id: user_id,
+            total_purchases: 0,
+            total_content_created: 0,
+            total_spent: 0,
+            total_earned: 0,
+            subscription_months: 0,
+            last_activity: get_block_timestamp(),
+            activity_score: 0,
+        };
+    }
+
+    // Update activity counters based on activity type
+    match activity_type {
+        ActivityType::Purchase => {
+            user_activity.total_purchases += 1;
+        },
+        ActivityType::ContentCreation => {
+            user_activity.total_content_created += 1;
+        },
+        ActivityType::SubscriptionRenewal => {
+            user_activity.subscription_months += 1;
+        },
+        ActivityType::ContentUpdate => {
+            // Content updates get fewer points but still count
+        },
+        ActivityType::Verification => {
+            // Verification activities get bonus points
+        },
+    }
+
+    // Update activity score and timestamp
+    user_activity.activity_score += points;
+    user_activity.last_activity = get_block_timestamp();
+    
+    // Store updated activity record
+    self.user_activities.write(user_id, user_activity);
+
+    // Create activity event record
+    let activity_id = self.next_activity_id.read();
+    let activity_event = ActivityEvent {
+        id: activity_id,
+        user_id: user_id,
+        activity_type: activity_type,
+        points: points,
+        timestamp: get_block_timestamp(),
+        metadata: metadata,
+    };
+    
+    self.activity_events.write(activity_id, activity_event);
+    self.next_activity_id.write(activity_id + 1);
+
+    // Check for rank progression
+    self.check_and_update_rank(user_id);
+
+    // Emit activity recorded event
+    self.emit(ActivityRecorded {
+        user_id: user_id,
+        activity_type: activity_type,
+        points: points,
+        timestamp: get_block_timestamp(),
+    });
+}
+
+/// @notice Checks if a user qualifies for rank progression and updates their rank
+/// @param user_id The ID of the user to check
+fn check_and_update_rank(ref self: ContractState, user_id: u256) {
+    let user_activity = self.user_activities.read(user_id);
+    let mut user = self.users.read(user_id);
+    let current_rank = user.rank;
+
+    // Determine the highest rank the user qualifies for
+    let new_rank = self.calculate_user_rank(user_activity);
+
+    // Only update if rank has changed and is higher
+    if new_rank != current_rank && self.is_rank_higher(new_rank, current_rank) {
+        // Update user rank
+        user.rank = new_rank;
+        self.users.write(user_id, user);
+        
+        // Update user by address mapping
+        self.user_by_address.write(user.wallet_address, user);
+
+        // Record rank history
+        self.user_rank_history.write((user_id, get_block_timestamp()), new_rank);
+
+        // Emit rank updated event
+        self.emit(RankUpdated {
+            user_id: user_id,
+            old_rank: current_rank,
+            new_rank: new_rank,
+            timestamp: get_block_timestamp(),
+        });
+    }
+}
+
+/// @notice Calculates the appropriate rank for a user based on their activity
+/// @param user_activity The user's activity record
+/// @return The rank the user qualifies for
+fn calculate_user_rank(self: @ContractState, user_activity: UserActivity) -> Rank {
+    // Check Expert rank first (highest requirements)
+    let expert_req = self.rank_requirements.read(Rank::EXPERT);
+    if self.meets_rank_requirements(user_activity, expert_req) {
+        return Rank::EXPERT;
+    }
+
+    // Check Intermediate rank
+    let intermediate_req = self.rank_requirements.read(Rank::INTERMEDIATE);
+    if self.meets_rank_requirements(user_activity, intermediate_req) {
+        return Rank::INTERMEDIATE;
+    }
+
+    // Default to Beginner
+    Rank::BEGINNER
+}
+
+/// @notice Checks if user activity meets the requirements for a specific rank
+/// @param user_activity The user's activity record
+/// @param requirements The rank requirements to check against
+/// @return True if requirements are met
+fn meets_rank_requirements(
+    self: @ContractState, user_activity: UserActivity, requirements: RankRequirements
+) -> bool {
+    user_activity.total_purchases >= requirements.min_purchases
+        && user_activity.total_content_created >= requirements.min_content_created
+        && user_activity.total_spent >= requirements.min_total_spent
+        && user_activity.total_earned >= requirements.min_total_earned
+        && user_activity.subscription_months >= requirements.min_subscription_months
+        && user_activity.activity_score >= requirements.min_activity_score
+}
+
+/// @notice Determines if one rank is higher than another
+/// @param rank1 The first rank to compare
+/// @param rank2 The second rank to compare
+/// @return True if rank1 is higher than rank2
+fn is_rank_higher(self: @ContractState, rank1: Rank, rank2: Rank) -> bool {
+    let rank1_level = self.get_rank_level(rank1);
+    let rank2_level = self.get_rank_level(rank2);
+    rank1_level > rank2_level
+}
+
+/// @notice Gets the numeric level of a rank for comparison
+/// @param rank The rank to get the level for
+/// @return The numeric level of the rank
+fn get_rank_level(self: @ContractState, rank: Rank) -> u8 {
+    match rank {
+        Rank::BEGINNER => 1,
+        Rank::INTERMEDIATE => 2,
+        Rank::EXPERT => 3,
+    }
+}
+
+/// @notice Sets the requirements for a specific rank (admin only)
+/// @param rank The rank to set requirements for
+/// @param requirements The requirements for the rank
+fn set_rank_requirements(
+    ref self: ContractState, rank: Rank, requirements: RankRequirements
+) {
+    self.assert_not_paused();
+    let caller = get_caller_address();
+    assert(caller == self.admin.read(), 'Only admin can set requirements');
+
+    self.rank_requirements.write(rank, requirements);
+
+    self.emit(RankRequirementsSet {
+        rank: rank,
+        requirements: requirements,
+        timestamp: get_block_timestamp(),
+    });
+}
+
+/// @notice Sets the benefits for a specific rank (admin only)
+/// @param rank The rank to set benefits for
+/// @param benefits The benefits for the rank
+fn set_rank_benefits(ref self: ContractState, rank: Rank, benefits: RankBenefits) {
+    self.assert_not_paused();
+    let caller = get_caller_address();
+    assert(caller == self.admin.read(), 'Only admin can set benefits');
+
+    self.rank_benefits.write(rank, benefits);
+
+    self.emit(RankBenefitsSet {
+        rank: rank,
+        benefits: benefits,
+        timestamp: get_block_timestamp(),
+    });
+}
+
+/// @notice Gets the current activity record for a user
+/// @param user_id The ID of the user
+/// @return The user's activity record
+fn get_user_activity(self: @ContractState, user_id: u256) -> UserActivity {
+    self.user_activities.read(user_id)
+}
+
+/// @notice Gets the requirements for a specific rank
+/// @param rank The rank to get requirements for
+/// @return The rank requirements
+fn get_rank_requirements(self: @ContractState, rank: Rank) -> RankRequirements {
+    self.rank_requirements.read(rank)
+}
+
+/// @notice Gets the benefits for a specific rank
+/// @param rank The rank to get benefits for
+/// @return The rank benefits
+fn get_rank_benefits(self: @ContractState, rank: Rank) -> RankBenefits {
+    self.rank_benefits.read(rank)
+}
+
+/// @notice Checks if a user has a specific rank or higher
+/// @param user_id The ID of the user
+/// @param required_rank The minimum rank required
+/// @return True if user has the required rank or higher
+fn has_rank_or_higher(self: @ContractState, user_id: u256, required_rank: Rank) -> bool {
+    let user = self.users.read(user_id);
+    self.is_rank_higher(user.rank, required_rank) || user.rank == required_rank
+}
+
+/// @notice Enables or disables the rank progression system (admin only)
+/// @param enabled Whether to enable rank progression
+fn set_rank_progression_enabled(ref self: ContractState, enabled: bool) {
+    self.assert_not_paused();
+    let caller = get_caller_address();
+    assert!(caller == self.admin.read(), "Only admin can toggle progression");
+
+    self.rank_progression_enabled.write(enabled);
+}
+
+/// @notice Checks if rank progression is enabled
+/// @return True if rank progression is enabled
+fn is_rank_progression_enabled(self: @ContractState) -> bool {
+    self.rank_progression_enabled.read()
+}
+
+// ============ RANK-BASED PERMISSIONS ============
+
+/// @notice Applies rank-based discount to a purchase
+/// @param user_id The user making the purchase
+/// @param base_price The original price
+/// @return The discounted price
+fn apply_rank_discount(self: @ContractState, user_id: u256, base_price: u256) -> u256 {
+    let user = self.users.read(user_id);
+    let benefits = self.rank_benefits.read(user.rank);
+    
+    if benefits.discount_percentage > 0 {
+        let discount = (base_price * benefits.discount_percentage) / 10000; // basis points
+        if discount < base_price {
+            base_price - discount
+        } else {
+            0_u256
+        }
+    } else {
+        base_price
+    }
+}
+
+/// @notice Checks if user can upload content based on rank limits
+/// @param user_id The user trying to upload content
+/// @return True if user can upload content
+fn can_upload_content(self: @ContractState, user_id: u256) -> bool {
+    let user = self.users.read(user_id);
+    let benefits = self.rank_benefits.read(user.rank);
+    let user_activity = self.user_activities.read(user_id);
+    
+    // Check monthly upload limit (simplified - would need more complex tracking in production)
+    user_activity.total_content_created < benefits.max_content_uploads
+}
+
+/// @notice Checks if user has priority support based on rank
+/// @param user_id The user to check
+/// @return True if user has priority support
+fn has_priority_support(self: @ContractState, user_id: u256) -> bool {
+    let user = self.users.read(user_id);
+    let benefits = self.rank_benefits.read(user.rank);
+    benefits.priority_support
+}
+
+/// @notice Checks if user has early access based on rank
+/// @param user_id The user to check
+/// @return True if user has early access
+fn has_early_access(self: @ContractState, user_id: u256) -> bool {
+    let user = self.users.read(user_id);
+    let benefits = self.rank_benefits.read(user.rank);
+    benefits.early_access
+}
+
     }
 
     #[generate_trait]
@@ -3046,5 +3409,72 @@ pub mod ChainLib {
                 RefundRequestReason::OTHER => 0,
             }
         }
+
+        // ============ ACTIVITY INTEGRATION HELPERS ============
+
+/// @notice Helper function to record purchase activity
+/// @param user_id The user making the purchase
+/// @param amount The purchase amount
+fn record_purchase_activity(ref self: ContractState, user_id: u256, amount: u256) {
+    if self.is_rank_progression_enabled() {
+        let points = self.calculate_purchase_points(amount);
+        self.record_activity(user_id, ActivityType::Purchase, points, 'purchase');
+        
+        // Update total spent
+        let mut user_activity = self.user_activities.read(user_id);
+        user_activity.total_spent += amount;
+        self.user_activities.write(user_id, user_activity);
+    }
+}
+
+/// @notice Helper function to record content creation activity
+/// @param user_id The user creating content
+/// @param content_id The ID of the created content
+fn record_content_creation_activity(ref self: ContractState, user_id: u256, content_id: felt252) {
+    if self.is_rank_progression_enabled() {
+        let points = 100_u256; // Base points for content creation
+        self.record_activity(user_id, ActivityType::ContentCreation, points, content_id);
+    }
+}
+
+/// @notice Helper function to record content update activity
+/// @param user_id The user updating content
+/// @param content_id The ID of the updated content
+fn record_content_update_activity(ref self: ContractState, user_id: u256, content_id: felt252) {
+    if self.is_rank_progression_enabled() {
+        let points = 25_u256; // Fewer points for updates
+        self.record_activity(user_id, ActivityType::ContentUpdate, points, content_id);
+    }
+}
+
+/// @notice Helper function to record subscription renewal activity
+/// @param user_id The user renewing subscription
+fn record_subscription_activity(ref self: ContractState, user_id: u256) {
+    if self.is_rank_progression_enabled() {
+        let points = 50_u256; // Points for subscription loyalty
+        self.record_activity(user_id, ActivityType::SubscriptionRenewal, points, 'subscription');
+    }
+}
+
+/// @notice Helper function to record verification activity
+/// @param user_id The user getting verified
+fn record_verification_activity(ref self: ContractState, user_id: u256) {
+    if self.is_rank_progression_enabled() {
+        let points = 200_u256; // Bonus points for verification
+        self.record_activity(user_id, ActivityType::Verification, points, 'verified');
+    }
+}
+
+/// @notice Calculates points based on purchase amount
+/// @param amount The purchase amount
+/// @return The points to award
+fn calculate_purchase_points(self: @ContractState, amount: u256) -> u256 {
+    // 1 point per token spent, with a minimum of 10 points
+    if amount < 10 {
+        10_u256
+    } else {
+        amount
+    }
+}
     }
 }

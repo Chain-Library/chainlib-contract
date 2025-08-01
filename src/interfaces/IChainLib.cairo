@@ -1,8 +1,9 @@
 use core::array::Array;
 use starknet::ContractAddress;
 use crate::base::types::{
-    AccessRule, Permissions, Purchase, PurchaseStatus, Rank, Receipt, Refund, RefundRequestReason,
-    Role, TokenBoundAccount, User, VerificationRequirement, VerificationType,
+    AccessRule, ActivityType, Permissions, Purchase, PurchaseStatus, Rank, RankBenefits,
+    RankRequirements, Receipt, Refund, RefundRequestReason, Role, TokenBoundAccount, User,
+    UserActivity, VerificationRequirement, VerificationType,
 };
 use crate::chainlib::ChainLib::ChainLib::{
     Category, ContentMetadata, ContentType, ContentUpdateHistory, ContentUpdateType, DelegationInfo,
@@ -272,7 +273,9 @@ pub trait IChainLib<TContractState> {
 
     fn batch_payout_creators(ref self: TContractState);
     fn set_payout_schedule(ref self: TContractState, interval: u64);
-    fn get_payout_schedule(self: @TContractState) -> (u64, u64); // interval and last execution time
+    fn get_payout_schedule(
+        self: @TContractState,
+    ) -> (u64, u64); // interval and last execution time
     fn request_refund(
         ref self: TContractState, purchase_id: u256, refund_reason: RefundRequestReason,
     );
@@ -285,4 +288,32 @@ pub trait IChainLib<TContractState> {
     fn get_all_pending_refunds(self: @TContractState) -> Array<Refund>;
     fn set_platform_fee(ref self: TContractState, platform_fee: u256);
     fn set_refund_window(ref self: TContractState, window: u64);
+
+    // ============ RANK PROGRESSION SYSTEM ============
+    fn record_activity(
+        ref self: TContractState,
+        user_id: u256,
+        activity_type: ActivityType,
+        points: u256,
+        metadata: felt252,
+    );
+    fn check_and_update_rank(ref self: TContractState, user_id: u256);
+    fn calculate_user_rank(self: @TContractState, user_activity: UserActivity) -> Rank;
+    fn meets_rank_requirements(
+        self: @TContractState, user_activity: UserActivity, requirements: RankRequirements,
+    ) -> bool;
+    fn is_rank_higher(self: @TContractState, rank1: Rank, rank2: Rank) -> bool;
+    fn get_rank_level(self: @TContractState, rank: Rank) -> u8;
+    fn set_rank_requirements(ref self: TContractState, rank: Rank, requirements: RankRequirements);
+    fn set_rank_benefits(ref self: TContractState, rank: Rank, benefits: RankBenefits);
+    fn get_user_activity(self: @TContractState, user_id: u256) -> UserActivity;
+    fn get_rank_requirements(self: @TContractState, rank: Rank) -> RankRequirements;
+    fn get_rank_benefits(self: @TContractState, rank: Rank) -> RankBenefits;
+    fn has_rank_or_higher(self: @TContractState, user_id: u256, required_rank: Rank) -> bool;
+    fn set_rank_progression_enabled(ref self: TContractState, enabled: bool);
+    fn is_rank_progression_enabled(self: @TContractState) -> bool;
+    fn apply_rank_discount(self: @TContractState, user_id: u256, base_price: u256) -> u256;
+    fn can_upload_content(self: @TContractState, user_id: u256) -> bool;
+    fn has_priority_support(self: @TContractState, user_id: u256) -> bool;
+    fn has_early_access(self: @TContractState, user_id: u256) -> bool;
 }
